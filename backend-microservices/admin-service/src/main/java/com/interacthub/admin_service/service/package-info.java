@@ -1,0 +1,1 @@
+package com.interacthub.admin_service.service;

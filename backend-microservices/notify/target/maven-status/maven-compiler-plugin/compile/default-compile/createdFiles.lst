@@ -1,0 +1,3 @@
+com\interacthub\notify\service\EmailService.class
+com\interacthub\notify\controller\NotificationController.class
+com\interacthub\notify\NotificationApplication.class

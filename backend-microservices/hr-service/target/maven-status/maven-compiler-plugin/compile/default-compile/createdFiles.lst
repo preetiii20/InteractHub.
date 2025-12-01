@@ -1,0 +1,14 @@
+com\interacthub\hr\config\WebCorsConfig.class
+com\interacthub\hr\service\HRDashboardService.class
+com\interacthub\hr\controller\HRDashboardController.class
+com\interacthub\hr\HrApplication.class
+com\interacthub\hr\controller\LeaveRequestController.class
+com\interacthub\hr\repository\LeaveRequestRepository.class
+com\interacthub\hr\controller\AttendanceController.class
+com\interacthub\hr\controller\SyncController.class
+com\interacthub\hr\config\RestTemplateConfig.class
+com\interacthub\hr\model\AttendanceRecord.class
+com\interacthub\hr\service\LeaveRequestService.class
+com\interacthub\hr\service\AttendanceService.class
+com\interacthub\hr\repository\AttendanceRepository.class
+com\interacthub\hr\model\LeaveRequest.class
