@@ -352,6 +352,17 @@ public class GroupChatController {
         g.setCreatedByName(createdByName);
         ChatGroup saved = groupRepo.save(g);
 
+        // Prepare notification payload
+        Map<String, Object> notification = Map.of(
+            "type", "NEW_GROUP",
+            "groupId", saved.getGroupId(),
+            "groupName", saved.getName(),
+            "createdBy", createdByName,
+            "members", members,
+            "createdAt", saved.getCreatedAt().toString(),
+            "message", createdByName + " created a new group"
+        );
+        
         // Add members and notify them
         for (String m : members) {
             if (m == null || m.trim().isEmpty()) continue;
@@ -365,16 +376,12 @@ public class GroupChatController {
             System.out.println("📢 Notifying member: " + memberEmail + " about new group: " + saved.getName());
             
             // Send to user-specific queue
-            broker.convertAndSend("/user/" + memberEmail + "/queue/notify", 
-                Map.of(
-                    "type", "NEW_GROUP",
-                    "groupId", saved.getGroupId(),
-                    "groupName", saved.getName(),
-                    "createdBy", createdByName,
-                    "members", members,
-                    "message", createdByName + " added you to " + saved.getName()
-                ));
+            broker.convertAndSend("/user/" + memberEmail + "/queue/notify", notification);
         }
+        
+        // Also broadcast to all clients via public topic
+        System.out.println("📢 Broadcasting group creation to all clients");
+        broker.convertAndSend("/topic/group-notifications", notification);
         
         // Send system message to group history
         GroupMessage systemMsg = new GroupMessage();
@@ -498,6 +505,114 @@ public class GroupChatController {
                 return ResponseEntity.ok(Map.of("message", "Message deleted successfully"));
             })
             .orElse(ResponseEntity.notFound().build());
+    }
+
+    // Leave group endpoint
+    @PostMapping("/{groupId}/leave")
+    public ResponseEntity<?> leaveGroup(
+            @PathVariable String groupId,
+            @RequestBody Map<String, String> payload) {
+        
+        String memberEmail = payload.get("memberEmail");
+        
+        if (memberEmail == null || memberEmail.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "memberEmail is required"));
+        }
+        
+        try {
+            // Remove member from group
+            List<GroupMember> members = memberRepo.findByGroupId(groupId);
+            GroupMember toRemove = members.stream()
+                .filter(m -> m.getMemberName().equalsIgnoreCase(memberEmail))
+                .findFirst()
+                .orElse(null);
+            
+            if (toRemove != null) {
+                memberRepo.delete(toRemove);
+            }
+            
+            // Broadcast member left event to remaining members
+            broker.convertAndSend("/topic/group." + groupId, Map.of(
+                "type", "MEMBER_LEFT",
+                "memberEmail", memberEmail,
+                "message", memberEmail + " left the group"
+            ));
+            
+            // Notify the member that they left
+            broker.convertAndSend("/user/" + memberEmail + "/queue/notify", Map.of(
+                "type", "GROUP_LEFT",
+                "groupId", groupId,
+                "message", "You left the group"
+            ));
+            
+            System.out.println("✅ Member " + memberEmail + " left group " + groupId);
+            return ResponseEntity.ok(Map.of("message", "Left group successfully"));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // Delete group endpoint (creator only)
+    @PostMapping("/{groupId}/delete")
+    public ResponseEntity<?> deleteGroup(
+            @PathVariable String groupId,
+            @RequestBody Map<String, String> payload) {
+        
+        String creatorEmail = payload.get("creatorEmail");
+        
+        if (creatorEmail == null || creatorEmail.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "creatorEmail is required"));
+        }
+        
+        try {
+            // Get group
+            ChatGroup group = groupRepo.findByGroupId(groupId).orElse(null);
+            if (group == null) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            // Verify creator
+            if (!group.getCreatedByName().equalsIgnoreCase(creatorEmail)) {
+                return ResponseEntity.status(403).body(Map.of("error", "Only group creator can delete the group"));
+            }
+            
+            // Get all members
+            List<GroupMember> members = memberRepo.findByGroupId(groupId);
+            
+            // Notify all members about group deletion
+            for (GroupMember member : members) {
+                broker.convertAndSend("/user/" + member.getMemberName() + "/queue/notify", Map.of(
+                    "type", "GROUP_DELETED",
+                    "groupId", groupId,
+                    "groupName", group.getName(),
+                    "message", "Group " + group.getName() + " has been deleted"
+                ));
+            }
+            
+            // Broadcast deletion to group topic
+            broker.convertAndSend("/topic/group." + groupId, Map.of(
+                "type", "GROUP_DELETED",
+                "groupId", groupId,
+                "message", "This group has been deleted"
+            ));
+            
+            // Delete all messages in group
+            List<GroupMessage> messages = msgRepo.findByGroupIdOrderBySentAtAsc(groupId);
+            msgRepo.deleteAll(messages);
+            
+            // Delete all members
+            memberRepo.deleteAll(members);
+            
+            // Delete group
+            groupRepo.delete(group);
+            
+            System.out.println("✅ Group " + groupId + " deleted by " + creatorEmail);
+            return ResponseEntity.ok(Map.of("message", "Group deleted successfully"));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
     }
 
     // STOMP send: /app/group.send

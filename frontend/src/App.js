@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import ToastProvider from './components/common/ToastProvider';
 import AnnouncementPollNotificationHub from './components/common/AnnouncementPollNotificationHub';
+import GlobalNotificationDisplay from './components/common/GlobalNotificationDisplay';
+import persistentWebSocketService from './services/PersistentWebSocketService';
+import { authHelpers } from './config/auth';
 
 // Import Pages
 import LandingPage from './pages/LandingPage';
@@ -64,6 +67,27 @@ const App = () => {
   const [announcementData, setAnnouncementData] = useState(null);
   const [pollData, setPollData] = useState(null);
 
+  // Initialize persistent WebSocket on app load
+  useEffect(() => {
+    const initializeWebSocket = async () => {
+      try {
+        const userEmail = authHelpers.getUserEmail();
+        const userName = authHelpers.getUserName();
+        const userIdentifier = userEmail || userName;
+
+        if (userIdentifier) {
+          console.log('🚀 Initializing persistent WebSocket for:', userIdentifier);
+          await persistentWebSocketService.connect(userIdentifier);
+          console.log('✅ Persistent WebSocket initialized globally');
+        }
+      } catch (error) {
+        console.error('❌ Error initializing WebSocket:', error);
+      }
+    };
+
+    initializeWebSocket();
+  }, []);
+
   const handleAnnouncementReceived = (announcement) => {
     setAnnouncementData(announcement);
     // You can navigate to announcements page or scroll to it
@@ -78,6 +102,7 @@ const App = () => {
 
   return (
     <ToastProvider>
+      <GlobalNotificationDisplay />
       <AnnouncementPollNotificationHub 
         onAnnouncementReceived={handleAnnouncementReceived}
         onPollReceived={handlePollReceived}
