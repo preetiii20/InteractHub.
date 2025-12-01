@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import ToastProvider from './components/common/ToastProvider';
+import AnnouncementPollNotificationHub from './components/common/AnnouncementPollNotificationHub';
 
 // Import Pages
 import LandingPage from './pages/LandingPage';
@@ -60,8 +61,27 @@ const DepartmentSettings = () => (
 
 
 const App = () => {
+  const [announcementData, setAnnouncementData] = useState(null);
+  const [pollData, setPollData] = useState(null);
+
+  const handleAnnouncementReceived = (announcement) => {
+    setAnnouncementData(announcement);
+    // You can navigate to announcements page or scroll to it
+    console.log('Announcement received:', announcement);
+  };
+
+  const handlePollReceived = (poll) => {
+    setPollData(poll);
+    // You can navigate to polls page or scroll to it
+    console.log('Poll received:', poll);
+  };
+
   return (
     <ToastProvider>
+      <AnnouncementPollNotificationHub 
+        onAnnouncementReceived={handleAnnouncementReceived}
+        onPollReceived={handlePollReceived}
+      />
       <Router>
       <Routes>
         {/* Landing Page */}
