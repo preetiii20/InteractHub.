@@ -130,6 +130,55 @@ const EnhancedLiveCommunicationHub = () => {
         load();
     }, [selfIdentifier, userName]);
 
+    // Read channelId from URL and set active conversation
+    useEffect(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const channelIdFromUrl = urlParams.get('channelId');
+        if (channelIdFromUrl) {
+            console.log('🔔 URL channelId found:', channelIdFromUrl);
+            console.log('🔔 Available conversations:', Array.from(conversations.keys()));
+            
+            // Check if conversation exists
+            if (conversations.has(channelIdFromUrl)) {
+                console.log('🔔 Conversation found, setting as active:', channelIdFromUrl);
+                setActiveConversationId(channelIdFromUrl);
+                setActiveTab('chat');
+                // Clear unread count
+                setUnreadCounts(prev => {
+                    const newCounts = new Map(prev);
+                    newCounts.delete(channelIdFromUrl);
+                    return newCounts;
+                });
+            } else {
+                console.log('🔔 Conversation not found in map, creating if DM:', channelIdFromUrl);
+                // If it's a DM and not in conversations, create it
+                if (channelIdFromUrl.startsWith('DM_')) {
+                    const roomId = channelIdFromUrl.replace('DM_', '');
+                    const [userA, userB] = roomId.split('|');
+                    const otherUserEmail = (userA === selfIdentifier?.toLowerCase()) ? userB : userA;
+                    const otherUserName = nameMap[otherUserEmail] || otherUserEmail;
+                    
+                    console.log('🔔 Creating DM conversation:', channelIdFromUrl, 'with:', otherUserEmail);
+                    setConversations(prev => {
+                        const newConvs = new Map(prev);
+                        newConvs.set(channelIdFromUrl, {
+                            id: channelIdFromUrl,
+                            name: otherUserName,
+                            type: 'direct',
+                            participants: [selfIdentifier, otherUserEmail],
+                            lastMessage: '',
+                            lastMessageTime: null,
+                            isOnline: false
+                        });
+                        return newConvs;
+                    });
+                    setActiveConversationId(channelIdFromUrl);
+                    setActiveTab('chat');
+                }
+            }
+        }
+    }, [conversations, selfIdentifier, nameMap]);
+
     // Show browser notification
     const showBrowserNotification = useCallback((from, content, conversationId) => {
         if (notificationPermission === 'granted' && 'Notification' in window) {
