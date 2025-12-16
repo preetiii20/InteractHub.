@@ -106,6 +106,32 @@ public class AdminService {
         
         return createdUser;
     }
+    
+    // Manual sync method to re-sync a user to employee service
+    public Map<String, String> manualSyncUser(String email) {
+        User user = userRepository.findByEmail(email)
+            .orElseThrow(() -> new RuntimeException("User not found: " + email));
+        
+        if (user.getRole() != User.Role.EMPLOYEE) {
+            throw new RuntimeException("User is not an employee. Only employees can be synced to employee service.");
+        }
+        
+        // Generate a new temporary password for sync
+        String tempPassword = generateTemporaryPassword();
+        
+        try {
+            syncService.syncUserToEmployee(user, tempPassword);
+            System.out.println("✅ Manual sync successful for: " + email);
+            return Map.of(
+                "message", "User synced successfully to employee service",
+                "email", email,
+                "note", "A new temporary password was generated. User may need to reset password."
+            );
+        } catch (Exception e) {
+            System.err.println("❌ Manual sync failed: " + e.getMessage());
+            throw new RuntimeException("Sync failed: " + e.getMessage());
+        }
+    }
 
     private void triggerOnboardingEmail(User user, String tempPassword) {
         try {

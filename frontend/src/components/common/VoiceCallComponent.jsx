@@ -1,109 +1,88 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import SockJS from 'sockjs-client';
-import { Client } from '@stomp/stompjs';
-import apiConfig from '../../config/api';
-import { authHelpers } from '../../config/auth';
 
-const VoiceCallComponent = ({ channelId, userId, userName }) => {
+const VoiceCallComponent = ({ channelId, userId, userName, autoStart = false, prefetchMedia = false, onCancel, onCallEnd }) => {
   const [isCallActive, setIsCallActive] = useState(false);
-  const [isAudioEnabled, setIsAudioEnabled] = useState(true);
-  const [participants, setParticipants] = useState([]);
   const [callDuration, setCallDuration] = useState(0);
-  const [stompClient, setStompClient] = useState(null);
-  const [permissionStatus, setPermissionStatus] = useState('idle'); // idle, pending, granted, denied
-  const [permissionError, setPermissionError] = useState('');
-  
-  const peerConnectionRef = useRef(null);
-  const localStreamRef = useRef(null);
-  const stompClientRef = useRef(null);
+  const [participants, setParticipants] = useState([]);
+  const containerRef = useRef(null);
   const callTimerRef = useRef(null);
 
-  const requestPermissions = async () => {
-    try {
-      // If we already have a stream, reuse it
-      if (localStreamRef.current && localStreamRef.current.active) {
-        console.log('[audio] Reusing existing stream');
-        setPermissionStatus('granted');
-        return true;
-      }
-
-      // Stop any existing tracks first
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach(track => track.stop());
-        localStreamRef.current = null;
-      }
-
-      setPermissionStatus('pending');
-      setPermissionError('');
-      
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { 
-          echoCancellation: true, 
-          noiseSuppression: true,
-          autoGainControl: true
-        }
-      });
-      
-      localStreamRef.current = stream;
-      setPermissionStatus('granted');
-      console.log('[audio] Permissions granted');
-      return true;
-    } catch (error) {
-      console.error('Permission denied:', error);
-      setPermissionStatus('denied');
-      
-      let errorMsg = error.message;
-      if (error.name === 'NotReadableError') {
-        errorMsg = 'Microphone in use by another application. Please close other apps using your microphone.';
-      } else if (error.name === 'NotAllowedError') {
-        errorMsg = 'Permission denied. Please allow microphone access.';
-      } else if (error.name === 'NotFoundError') {
-        errorMsg = 'No microphone found. Please connect a device.';
-      }
-      
-      setPermissionError(errorMsg);
-      console.log('[audio] Error: ' + errorMsg);
-      return false;
+  /**
+   * Start voice call using Jitsi iframe (audio-only mode)
+   */
+  const startVoiceCall = useCallback(async () => {
+    if (!channelId) {
+      alert('Please select a recipient first');
+      return;
     }
-  };
 
-  const initializeWebSocket = useCallback(() => {
-    const socket = new SockJS(apiConfig.websocketUrl);
-    const client = new Client({
-      webSocketFactory: () => socket,
-      debug: (str) => console.log(str),
-      reconnectDelay: 5000,
-    });
-    
-    client.onConnect = () => {
-      console.log('Connected to voice call signaling');
-      stompClientRef.current = client;
-      setStompClient(client);
-      
-      // Subscribe to signaling messages
-      client.subscribe(`/topic/channel.${channelId}.voice-signal`, handleSignalingMessage);
-      client.subscribe(`/topic/channel.${channelId}.voice-call`, handleCallEvent);
-    };
-    
-    client.activate();
-  }, [channelId]);
+    try {
+      console.log('[Voice] Starting voice call with room:', channelId);
+      setIsCallActive(true);
+      setCallDuration(0);
+      setParticipants([userName || userId]); // Add self as first participant
+    } catch (error) {
+      console.error('[Voice] Failed to start call:', error);
+      alert('Failed to start voice call. Please try again.');
+    }
+  }, [channelId, userId, userName]);
 
+  /**
+   * End voice call and broadcast to other participants
+   */
+  const endVoiceCall = useCallback(() => {
+    try {
+      console.log('[Voice] Ending voice call...');
+      setIsCallActive(false);
+      setCallDuration(0);
+      setParticipants([]);
+
+      // Broadcast call end event via WebSocket
+      try {
+        const broadcastCallEnd = async () => {
+          const persistentWebSocketService = (await import('../../services/PersistentWebSocketService')).default;
+          if (persistentWebSocketService.client && persistentWebSocketService.isConnected) {
+            const callEndEvent = {
+              type: 'call-ended',
+              roomId: channelId,
+              fromUser: userId,
+              timestamp: Date.now()
+            };
+            persistentWebSocketService.client.publish({
+              destination: `/topic/call.${channelId}`,
+              body: JSON.stringify(callEndEvent)
+            });
+            console.log('📢 Broadcasted call end event');
+          }
+        };
+        broadcastCallEnd();
+      } catch (error) {
+        console.error('Error broadcasting call end:', error);
+      }
+
+      if (onCallEnd) {
+        onCallEnd();
+      }
+    } catch (error) {
+      console.error('[Voice] Error ending call:', error);
+    }
+  }, [channelId, userId, onCallEnd]);
+
+  /**
+   * Auto-start call if needed
+   */
   useEffect(() => {
-    initializeWebSocket();
-    
-    return () => {
-      if (stompClientRef.current) {
-        stompClientRef.current.deactivate();
-      }
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach(track => track.stop());
-      }
-      if (callTimerRef.current) {
-        clearInterval(callTimerRef.current);
-      }
-    };
-  }, [channelId, initializeWebSocket]);
+    if (autoStart && !isCallActive && channelId) {
+      const timer = setTimeout(() => {
+        startVoiceCall();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [autoStart, isCallActive, channelId, startVoiceCall]);
 
+  /**
+   * Call duration timer
+   */
   useEffect(() => {
     if (isCallActive) {
       callTimerRef.current = setInterval(() => {
@@ -115,344 +94,171 @@ const VoiceCallComponent = ({ channelId, userId, userName }) => {
       }
       setCallDuration(0);
     }
+    return () => {
+      if (callTimerRef.current) {
+        clearInterval(callTimerRef.current);
+      }
+    };
   }, [isCallActive]);
 
-  
-
-  const handleSignalingMessage = (message) => {
-    const signal = JSON.parse(message.body);
-    
-    if (signal.type === 'offer') {
-      handleOffer(signal.offer);
-    } else if (signal.type === 'answer') {
-      handleAnswer(signal.answer);
-    } else if (signal.type === 'ice-candidate') {
-      handleIceCandidate(signal.candidate);
-    }
-  };
-
-  const handleCallEvent = (message) => {
-    const event = JSON.parse(message.body);
-    
-    if (event.type === 'voice-call-started') {
-      setParticipants(prev => [...prev, { id: event.userId, name: event.userName }]);
-    } else if (event.type === 'voice-call-ended') {
-      setParticipants(prev => prev.filter(p => p.id !== event.userId));
-    }
-  };
-
-  const startVoiceCall = async () => {
-    if (!channelId) {
-      alert('Please select a recipient first');
-      return;
-    }
-
-    const hasPermissions = localStreamRef.current ? true : await requestPermissions();
-    if (!hasPermissions) {
-      alert('Microphone permission is required for voice calls');
-      return;
-    }
-
-    try {
-      setIsCallActive(true);
-      
-      // Create peer connection
-      peerConnectionRef.current = new RTCPeerConnection({
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' }
-        ]
-      });
-
-      // Add audio track to peer connection
-      if (localStreamRef.current) {
-        const audioTrack = localStreamRef.current.getAudioTracks()[0];
-        if (audioTrack) {
-          peerConnectionRef.current.addTrack(audioTrack, localStreamRef.current);
-        }
+  /**
+   * Cleanup on unmount
+   */
+  useEffect(() => {
+    return () => {
+      if (isCallActive) {
+        endVoiceCall();
       }
+    };
+  }, []);
 
-      // Handle remote stream
-      peerConnectionRef.current.ontrack = (event) => {
-        // Play remote audio
-        const remoteAudio = new Audio();
-        remoteAudio.srcObject = event.streams[0];
-        remoteAudio.play();
-      };
-
-      // Handle ICE candidates
-      peerConnectionRef.current.onicecandidate = (event) => {
-        if (event.candidate) {
-          sendSignalingMessage({
-            type: 'ice-candidate',
-            candidate: event.candidate,
-            userId: userId
-          });
-        }
-      };
-
-      // Create and send offer
-      const offer = await peerConnectionRef.current.createOffer();
-      await peerConnectionRef.current.setLocalDescription(offer);
-      
-      sendSignalingMessage({
-        type: 'offer',
-        offer: offer,
-        userId: userId
-      });
-
-      // Notify others about voice call start
-      if (stompClientRef.current) {
-        stompClientRef.current.publish({
-          destination: `/app/chat.sendVoiceCallEvent`,
-          body: JSON.stringify({
-            channelId: channelId,
-            type: 'voice-call-started',
-            userId: userId,
-            userName: userName
-          })
-        });
-      }
-
-      setIsCallActive(true);
-      setParticipants([{ id: userId, name: userName }]);
-
-    } catch (error) {
-      console.error('Error starting voice call:', error);
-      alert('Could not access microphone. Please check permissions.');
-    }
-  };
-
-  const endVoiceCall = () => {
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => track.stop());
-    }
-    
-    if (peerConnectionRef.current) {
-      peerConnectionRef.current.close();
-    }
-
-    // Notify others about voice call end
-    if (stompClientRef.current) {
-      try {
-        stompClientRef.current.publish({
-          destination: `/app/chat.sendVoiceCallEvent`,
-          body: JSON.stringify({ channelId, type: 'voice-call-ended', userId })
-        });
-      } catch {}
-    }
-
-    setIsCallActive(false);
-    setParticipants([]);
-  };
-
-  const toggleMute = () => {
-    if (localStreamRef.current) {
-      const audioTrack = localStreamRef.current.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = !isAudioEnabled;
-        setIsAudioEnabled(!isAudioEnabled);
-      }
-    }
-  };
-
-  const handleOffer = async (offer) => {
-    try {
-      await peerConnectionRef.current.setRemoteDescription(offer);
-      const answer = await peerConnectionRef.current.createAnswer();
-      await peerConnectionRef.current.setLocalDescription(answer);
-      
-      sendSignalingMessage({
-        type: 'answer',
-        answer: answer,
-        userId: userId
-      });
-    } catch (error) {
-      console.error('Error handling offer:', error);
-    }
-  };
-
-  const handleAnswer = async (answer) => {
-    try {
-      await peerConnectionRef.current.setRemoteDescription(answer);
-    } catch (error) {
-      console.error('Error handling answer:', error);
-    }
-  };
-
-  const handleIceCandidate = async (candidate) => {
-    try {
-      await peerConnectionRef.current.addIceCandidate(candidate);
-    } catch (error) {
-      console.error('Error handling ICE candidate:', error);
-    }
-  };
-
-  const sendSignalingMessage = (message) => {
-    if (stompClientRef.current) {
-      stompClientRef.current.publish({
-        destination: `/app/chat.sendVoiceSignal`,
-        body: JSON.stringify({
-          channelId: channelId,
-          signal: message
-        })
-      });
-    }
-  };
-
+  /**
+   * Format call duration
+   */
   const formatDuration = (seconds) => {
-    const mins = Math.floor(seconds / 60);
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
+    
+    if (hours > 0) {
+      return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  if (!channelId) {
+    return (
+      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg shadow-lg p-8 h-full flex items-center justify-center border border-blue-100">
+        <div className="text-center">
+          <div className="text-7xl mb-4 animate-bounce">📞</div>
+          <p className="text-lg text-gray-700 font-medium">Please select a conversation to start a voice call</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="bg-white rounded-lg shadow-md p-6">
-      <h3 className="text-xl font-semibold mb-4 flex items-center">
-        <svg className="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-        </svg>
-        Voice Call - {channelId}
-      </h3>
-
-      {/* Permission Status */}
-      {permissionStatus === 'denied' && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <div className="flex items-center">
-            <svg className="w-5 h-5 text-red-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-            </svg>
-            <div>
-              <h4 className="text-red-800 font-medium">Microphone Access Denied</h4>
-              <p className="text-red-600 text-sm mt-1">
-                Please allow microphone access in your browser settings to use voice calls.
-              </p>
-              <button 
-                onClick={requestPermissions}
-                className="mt-2 px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700"
-              >
-                Try Again
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {permissionStatus === 'pending' && (
-        <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <div className="flex items-center">
-            <svg className="w-5 h-5 text-yellow-500 mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            <span className="text-yellow-800">Requesting microphone permission...</span>
-          </div>
-        </div>
-      )}
-
+    <div className="bg-white h-full flex flex-col min-h-0">
       {!isCallActive ? (
-        <div className="text-center py-8">
-          <div className="mb-6">
-            <div className="w-20 h-20 mx-auto bg-green-100 rounded-full flex items-center justify-center">
-              <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-              </svg>
-            </div>
+        <div className="bg-gradient-to-br from-slate-50 to-blue-50 rounded-lg shadow-lg p-8 h-full flex flex-col items-center justify-center border border-blue-100">
+          <div className="text-center">
+            {autoStart ? (
+              <>
+                <div className="text-8xl mb-6 animate-pulse">🎤</div>
+                <h2 className="text-2xl font-bold text-gray-800 mb-2">Ready to start a voice call?</h2>
+                <p className="text-gray-600 mb-8">Connect with crystal clear audio</p>
+                <button
+                  onClick={startVoiceCall}
+                  className="px-10 py-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-full hover:from-green-600 hover:to-green-700 flex items-center gap-3 mx-auto text-lg font-bold shadow-lg hover:shadow-xl transition-all transform hover:scale-105"
+                >
+                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773c.058.3.102.605.102.924v1.902c0 .319-.044.624-.102.924l1.548.773a1 1 0 01.54 1.06l-.74 4.435a1 1 0 01-.986.836H3a1 1 0 01-1-1V3z" />
+                  </svg>
+                  Start Voice Call
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="text-8xl mb-6 animate-bounce">📞</div>
+                <h2 className="text-2xl font-bold text-gray-800 mb-2">Calling...</h2>
+                <p className="text-gray-600 mb-8">Waiting for recipient to accept</p>
+                <div className="flex justify-center gap-1 mb-8">
+                  <div className="w-3 h-3 bg-green-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <div className="w-3 h-3 bg-green-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <div className="w-3 h-3 bg-green-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+                <button
+                  onClick={onCancel}
+                  className="px-8 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-full hover:from-red-600 hover:to-red-700 flex items-center gap-2 mx-auto font-bold shadow-lg hover:shadow-xl transition-all transform hover:scale-105"
+                >
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" clipRule="evenodd" />
+                  </svg>
+                  Cancel Call
+                </button>
+              </>
+            )}
           </div>
-          <button
-            onClick={startVoiceCall}
-            className="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 flex items-center mx-auto text-lg"
-          >
-            <svg className="w-6 h-6 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-            </svg>
-            Start Voice Call
-          </button>
         </div>
       ) : (
-        <div className="space-y-6">
-          {/* Call Status */}
-          <div className="text-center">
-            <div className="text-3xl font-bold text-green-600 mb-2">
-              {formatDuration(callDuration)}
+        <div className="flex flex-col h-full min-h-0 p-3 gap-2">
+          {/* Call Header with Duration */}
+          <div className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-4 py-3 rounded-lg shadow-md flex-shrink-0">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-white rounded-full animate-pulse"></div>
+                <span className="font-semibold">Voice call in progress</span>
+              </div>
+              <div className="text-2xl font-bold font-mono">
+                {formatDuration(callDuration)}
+              </div>
             </div>
-            <div className="text-sm text-gray-600">
-              Voice call in progress
-            </div>
+          </div>
+
+          {/* Jitsi Container - Audio Only */}
+          <div
+            ref={containerRef}
+            className="flex-1 rounded-lg overflow-hidden bg-gradient-to-br from-slate-900 to-slate-800 shadow-lg border-2 border-slate-700 min-h-0"
+          >
+            <iframe
+              src={`https://meet.jit.si/${channelId}?userInfo.displayName=${encodeURIComponent(userName || userId)}&config.startAudioOnly=true&config.startWithAudioMuted=false&config.startWithVideoMuted=true&config.disableProfile=false&config.prejoinPageEnabled=false&config.toolbarButtons=["microphone","hangup","chat","raisehand","settings"]&config.brandingDataUrl=false&config.disableBrandingLogo=true`}
+              style={{
+                width: '100%',
+                height: '100%',
+                border: 'none',
+                borderRadius: '8px'
+              }}
+              allow="microphone; display-capture"
+              title="Jitsi Meet Voice Call"
+            />
           </div>
 
           {/* Audio Visualization */}
-          <div className="flex justify-center">
+          <div className="flex justify-center p-2 bg-white rounded-lg shadow-md flex-shrink-0">
             <div className="flex items-center space-x-1">
-              {[...Array(5)].map((_, i) => (
+              {[...Array(7)].map((_, i) => (
                 <div
                   key={i}
-                  className={`w-1 h-8 rounded-full ${
-                    isAudioEnabled ? 'bg-green-500 animate-pulse' : 'bg-gray-300'
-                  }`}
+                  className="w-1.5 rounded-full bg-gradient-to-t from-green-500 to-emerald-400 shadow-lg"
                   style={{
+                    height: `${16 + Math.random() * 24}px`,
                     animationDelay: `${i * 0.1}s`,
-                    animationDuration: '1s'
+                    animation: 'pulse 0.8s ease-in-out infinite'
                   }}
                 ></div>
               ))}
             </div>
           </div>
 
-          {/* Call Controls */}
-          <div className="flex justify-center space-x-6">
-            <button
-              onClick={toggleMute}
-              className={`p-4 rounded-full transition-colors ${
-                isAudioEnabled 
-                  ? 'bg-green-600 text-white hover:bg-green-700' 
-                  : 'bg-red-600 text-white hover:bg-red-700'
-              }`}
-            >
-              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                {isAudioEnabled ? (
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                ) : (
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                )}
-              </svg>
-            </button>
+          {/* Participants List */}
+          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-2.5 flex-shrink-0">
+            <p className="text-xs font-semibold text-gray-700 mb-1.5">👥 Participants ({participants.length})</p>
+            <div className="flex flex-wrap gap-1.5">
+              {participants.length > 0 ? (
+                participants.map((participant, idx) => (
+                  <span key={idx} className="px-2.5 py-0.5 bg-white text-green-700 text-xs rounded-full border border-green-200 font-medium">
+                    {participant}
+                  </span>
+                ))
+              ) : (
+                <span className="px-2.5 py-0.5 bg-white text-green-700 text-xs rounded-full border border-green-200 font-medium">
+                  {userName || userId}
+                </span>
+              )}
+            </div>
+          </div>
 
+          {/* Call Controls */}
+          <div className="flex gap-2 justify-center flex-shrink-0">
             <button
               onClick={endVoiceCall}
-              className="p-4 bg-red-600 text-white rounded-full hover:bg-red-700 transition-colors"
+              className="px-6 py-2.5 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-full hover:from-red-600 hover:to-red-700 flex items-center gap-2 font-bold shadow-lg hover:shadow-xl transition-all transform hover:scale-105 text-sm"
             >
-              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" clipRule="evenodd" />
               </svg>
+              End Call
             </button>
-          </div>
-
-          {/* Participants */}
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <h4 className="text-sm font-medium text-gray-700 mb-3 text-center">
-              Participants ({participants.length})
-            </h4>
-            <div className="flex flex-wrap justify-center gap-2">
-              {participants.map((participant) => (
-                <div
-                  key={participant.id}
-                  className="flex items-center space-x-2 px-3 py-2 bg-white rounded-full shadow-sm"
-                >
-                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                  <span className="text-sm font-medium text-gray-700">
-                    {participant.name}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Call Quality Indicator */}
-          <div className="text-center">
-            <div className="inline-flex items-center space-x-2 px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <span>Excellent Connection</span>
-            </div>
           </div>
         </div>
       )}

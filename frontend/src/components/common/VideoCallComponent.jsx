@@ -4,7 +4,7 @@ import { Client } from '@stomp/stompjs';
 import apiConfig from '../../config/api';
 import { authHelpers } from '../../config/auth';
 
-const VideoCallComponent = ({ channelId, userId, userName, autoStart = false, prefetchMedia = false }) => {
+const VideoCallComponent = ({ channelId, userId, userName, autoStart = false, prefetchMedia = false, onCancel, onCallEnd }) => {
   const [isCallActive, setIsCallActive] = useState(false);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
@@ -82,10 +82,22 @@ const VideoCallComponent = ({ channelId, userId, userName, autoStart = false, pr
       localStreamRef.current = stream;
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
-        try { 
-          await localVideoRef.current.play(); 
+        // Handle play() promise properly to avoid interruption errors
+        try {
+          const playPromise = localVideoRef.current.play();
+          if (playPromise !== undefined) {
+            await playPromise.catch((error) => {
+              // Ignore interruption errors (common when srcObject changes)
+              if (error.name !== 'AbortError' && error.name !== 'NotAllowedError') {
+                addDebug('[video] Play error: ' + error.message);
+              }
+            });
+          }
         } catch (e) {
-          addDebug('[video] Play error: ' + e.message);
+          // Ignore interruption errors
+          if (e.name !== 'AbortError' && e.name !== 'NotAllowedError') {
+            addDebug('[video] Play error: ' + e.message);
+          }
         }
       }
       
@@ -136,28 +148,14 @@ const VideoCallComponent = ({ channelId, userId, userName, autoStart = false, pr
 
   useEffect(() => {
     initializeWebSocket();
+    
     if (prefetchMedia && !localStreamRef.current) {
       (async () => {
         const ok = await requestPermissions();
-        if (ok) {
-          // Show local preview even before negotiation
+        if (ok && autoStart) {
+          // Show local preview even before negotiation (only if call is accepted)
           setIsCallActive(true);
           setParticipants(prev => (prev.length ? prev : [{ id: userId, name: userName }]));
-        }
-      })();
-    }
-    if (autoStart) {
-      // try to request permissions early; then start call
-      (async () => {
-        // If we already have a stream, don't re-prompt
-        let ok = true;
-        if (!localStreamRef.current) {
-          ok = await requestPermissions();
-        } else {
-          setPermissionStatus('granted');
-        }
-        if (ok && !isCallActive && channelId) {
-          await startCall();
         }
       })();
     }
@@ -170,7 +168,21 @@ const VideoCallComponent = ({ channelId, userId, userName, autoStart = false, pr
         localStreamRef.current.getTracks().forEach(track => track.stop());
       }
     };
-  }, [channelId, initializeWebSocket, autoStart]);
+  }, [channelId, initializeWebSocket, prefetchMedia, autoStart]);
+
+  // Separate effect to handle auto-start when call is accepted
+  useEffect(() => {
+    console.log('🔍 Auto-start effect triggered:', { autoStart, isCallActive, channelId });
+    if (autoStart && !isCallActive && channelId) {
+      console.log('🚀 Auto-starting video call:', { autoStart, isCallActive, channelId });
+      // Use setTimeout to ensure WebSocket is connected
+      const timer = setTimeout(async () => {
+        console.log('🚀 Executing startCall...');
+        await startCall();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [autoStart, isCallActive, channelId]);
 
   const handleSignalingMessage = (message) => {
     const payload = typeof message?.body === 'string' ? JSON.parse(message.body) : message;
@@ -199,11 +211,37 @@ const VideoCallComponent = ({ channelId, userId, userName, autoStart = false, pr
 
   const handleCallEvent = (message) => {
     const event = JSON.parse(message.body);
+    addDebug('[call] Event received: ' + event.type + ' from ' + event.userId);
     
-    if (event.type === 'user-joined') {
-      setParticipants(prev => [...prev, { id: event.userId, name: event.userName }]);
-    } else if (event.type === 'user-left') {
-      setParticipants(prev => prev.filter(p => p.id !== event.userId));
+    if (event.type === 'user-joined' || event.type === 'call-started') {
+      setParticipants(prev => {
+        // Ensure current user is always in the list
+        const currentUser = { id: userId, name: userName };
+        const hasCurrentUser = prev.some(p => p.id === userId);
+        
+        // Check if the new participant already exists
+        const exists = prev.some(p => p.id === event.userId);
+        if (exists) {
+          // If current user is missing, add them
+          return hasCurrentUser ? prev : [currentUser, ...prev];
+        }
+        
+        // Add the new participant
+        const newParticipant = { id: event.userId, name: event.userName || event.userId };
+        // If current user is missing, add them first
+        return hasCurrentUser ? [...prev, newParticipant] : [currentUser, newParticipant];
+      });
+    } else if (event.type === 'user-left' || event.type === 'call-ended') {
+      // When someone ends the call, end it for everyone
+      addDebug('[call] Call ended by: ' + event.userId);
+      // Only end if it's not the current user (to avoid double-ending)
+      if (event.userId !== userId && isCallActive) {
+        addDebug('[call] Ending call on this side due to remote end');
+        endCall();
+      } else {
+        // Just remove the participant if it's the current user or call already ended
+        setParticipants(prev => prev.filter(p => p.id !== event.userId));
+      }
     }
   };
 
@@ -216,7 +254,11 @@ const VideoCallComponent = ({ channelId, userId, userName, autoStart = false, pr
     // Ensure signaling connected before producing offer/ICE
     if (!isConnectedRef.current) {
       // wait briefly for connection
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise(resolve => setTimeout(resolve, 500));
+      // Check again after waiting
+      if (!isConnectedRef.current) {
+        console.warn('STOMP not connected, call may not work properly');
+      }
     }
  
     const hasPermissions = localStreamRef.current ? true : await requestPermissions();
@@ -228,6 +270,9 @@ const VideoCallComponent = ({ channelId, userId, userName, autoStart = false, pr
     try {
       setIsCallActive(true);
       
+      // Initialize participants with current user only
+      setParticipants([{ id: userId, name: userName }]);
+      
       // Create peer connection
       peerConnectionRef.current = new RTCPeerConnection({
         iceServers
@@ -237,14 +282,68 @@ const VideoCallComponent = ({ channelId, userId, userName, autoStart = false, pr
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach(track => {
           peerConnectionRef.current.addTrack(track, localStreamRef.current);
+          addDebug('[rtc] Added local track: ' + track.kind);
         });
       }
 
-      // Handle remote stream
+      // Handle remote stream - create a combined stream for all tracks
+      let remoteStreamRef = null;
       peerConnectionRef.current.ontrack = (event) => {
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = event.streams[0];
-          try { remoteVideoRef.current.play?.(); } catch {}
+        addDebug('[rtc] Received remote track: ' + event.track.kind + ', streamId: ' + (event.streams[0]?.id || 'none') + ', trackId: ' + event.track.id + ', enabled: ' + event.track.enabled + ', readyState: ' + event.track.readyState);
+        if (event.streams && event.streams[0]) {
+          // Use the stream from the event (it should contain all tracks)
+          const remoteStream = event.streams[0];
+          
+          // If we don't have a remote stream yet, or if this is a new stream, use it
+          if (!remoteStreamRef || remoteStreamRef.id !== remoteStream.id) {
+            remoteStreamRef = remoteStream;
+            
+            if (remoteVideoRef.current) {
+              // Log stream details
+              const videoTracks = remoteStream.getVideoTracks();
+              const audioTracks = remoteStream.getAudioTracks();
+              addDebug('[video] Remote stream details - videoTracks: ' + videoTracks.length + ', audioTracks: ' + audioTracks.length);
+              if (videoTracks.length > 0) {
+                addDebug('[video] Video track: id=' + videoTracks[0].id + ', enabled=' + videoTracks[0].enabled + ', readyState=' + videoTracks[0].readyState + ', settings=' + JSON.stringify(videoTracks[0].getSettings()));
+              }
+              
+              // Set the stream to the video element
+              remoteVideoRef.current.srcObject = remoteStream;
+              addDebug('[video] Set remote video srcObject, streamId: ' + remoteStream.id + ', total tracks: ' + remoteStream.getTracks().length);
+              
+              // Wait a bit for the video element to process the stream
+              setTimeout(() => {
+                if (remoteVideoRef.current) {
+                  const video = remoteVideoRef.current;
+                  addDebug('[video] Video element state - readyState: ' + video.readyState + ', paused: ' + video.paused + ', srcObject: ' + (video.srcObject ? 'set' : 'null'));
+                  
+                  // Handle play() promise properly to avoid interruption errors
+                  const playPromise = video.play();
+                  if (playPromise !== undefined) {
+                    playPromise
+                      .then(() => {
+                        addDebug('[video] Remote video playing successfully');
+                      })
+                      .catch((error) => {
+                        // Ignore interruption errors (common when srcObject changes)
+                        if (error.name !== 'AbortError' && error.name !== 'NotAllowedError') {
+                          addDebug('[video] Play error: ' + error.message);
+                          console.error('[video] Failed to play remote video:', error);
+                        }
+                      });
+                  }
+                }
+              }, 100);
+            }
+          } else {
+            // Stream already set, just log
+            addDebug('[rtc] Track added to existing stream: ' + event.track.kind);
+            // Update the video element if a new video track was added
+            if (event.track.kind === 'video' && remoteVideoRef.current && remoteVideoRef.current.srcObject !== remoteStream) {
+              remoteVideoRef.current.srcObject = remoteStream;
+              addDebug('[video] Updated remote video srcObject with new video track');
+            }
+          }
         }
       };
 
@@ -283,7 +382,7 @@ const VideoCallComponent = ({ channelId, userId, userName, autoStart = false, pr
       }
 
       setIsCallActive(true);
-      setParticipants([{ id: userId, name: userName }]);
+      // Don't set participants here - let handleCallEvent manage it
 
     } catch (error) {
       console.error('Error starting call:', error);
@@ -338,6 +437,11 @@ const VideoCallComponent = ({ channelId, userId, userName, autoStart = false, pr
     setPermissionStatus('idle');
     setIsVideoEnabled(true);
     setIsAudioEnabled(true);
+    
+    // Notify parent that call ended
+    if (onCallEnd) {
+      onCallEnd();
+    }
   };
 
   const toggleVideo = () => {
@@ -368,9 +472,60 @@ const VideoCallComponent = ({ channelId, userId, userName, autoStart = false, pr
         peerConnectionRef.current = new RTCPeerConnection({
           iceServers
         });
+        // Handle remote stream (same as in startCall)
+        let remoteStreamRef = null;
         peerConnectionRef.current.ontrack = (event) => {
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.srcObject = event.streams[0];
+          addDebug('[rtc] Received remote track: ' + event.track.kind + ', streamId: ' + (event.streams[0]?.id || 'none') + ', trackId: ' + event.track.id + ', enabled: ' + event.track.enabled + ', readyState: ' + event.track.readyState);
+          if (event.streams && event.streams[0]) {
+            const remoteStream = event.streams[0];
+            
+            // If we don't have a remote stream yet, or if this is a new stream, use it
+            if (!remoteStreamRef || remoteStreamRef.id !== remoteStream.id) {
+              remoteStreamRef = remoteStream;
+              
+              if (remoteVideoRef.current) {
+                // Log stream details
+                const videoTracks = remoteStream.getVideoTracks();
+                const audioTracks = remoteStream.getAudioTracks();
+                addDebug('[video] Remote stream details - videoTracks: ' + videoTracks.length + ', audioTracks: ' + audioTracks.length);
+                if (videoTracks.length > 0) {
+                  addDebug('[video] Video track: id=' + videoTracks[0].id + ', enabled=' + videoTracks[0].enabled + ', readyState=' + videoTracks[0].readyState + ', settings=' + JSON.stringify(videoTracks[0].getSettings()));
+                }
+                
+                remoteVideoRef.current.srcObject = remoteStream;
+                addDebug('[video] Set remote video srcObject, streamId: ' + remoteStream.id + ', total tracks: ' + remoteStream.getTracks().length);
+                
+                // Wait a bit for the video element to process the stream
+                setTimeout(() => {
+                  if (remoteVideoRef.current) {
+                    const video = remoteVideoRef.current;
+                    addDebug('[video] Video element state - readyState: ' + video.readyState + ', paused: ' + video.paused + ', srcObject: ' + (video.srcObject ? 'set' : 'null'));
+                    
+                    // Handle play() promise properly
+                    const playPromise = video.play();
+                    if (playPromise !== undefined) {
+                      playPromise
+                        .then(() => {
+                          addDebug('[video] Remote video playing successfully');
+                        })
+                        .catch((error) => {
+                          if (error.name !== 'AbortError' && error.name !== 'NotAllowedError') {
+                            addDebug('[video] Play error: ' + error.message);
+                            console.error('[video] Failed to play remote video:', error);
+                          }
+                        });
+                    }
+                  }
+                }, 100);
+              }
+            } else {
+              addDebug('[rtc] Track added to existing stream: ' + event.track.kind);
+              // Update the video element if a new video track was added
+              if (event.track.kind === 'video' && remoteVideoRef.current && remoteVideoRef.current.srcObject !== remoteStream) {
+                remoteVideoRef.current.srcObject = remoteStream;
+                addDebug('[video] Updated remote video srcObject with new video track');
+              }
+            }
           }
         };
         peerConnectionRef.current.onicecandidate = (event) => {
@@ -386,10 +541,12 @@ const VideoCallComponent = ({ channelId, userId, userName, autoStart = false, pr
         if (localStreamRef.current) {
           localStreamRef.current.getTracks().forEach(track => {
             peerConnectionRef.current.addTrack(track, localStreamRef.current);
+            addDebug('[rtc] Added local track: ' + track.kind);
           });
         }
         setIsCallActive(true);
-        setParticipants(prev => (prev.length ? prev : [{ id: userId, name: userName }]));
+        // Initialize with current user only - other participants will be added via handleCallEvent
+        setParticipants([{ id: userId, name: userName }]);
       }
       await peerConnectionRef.current.setRemoteDescription(offer);
       addDebug('[rtc] Creating answer...');
@@ -444,8 +601,19 @@ const VideoCallComponent = ({ channelId, userId, userName, autoStart = false, pr
     }
   };
 
+  if (!channelId) {
+    return (
+      <div className="bg-white rounded-lg shadow-md p-6 h-full flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-6xl mb-4">📹</div>
+          <p className="text-lg text-gray-600">Please select a conversation to start a video call</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="bg-white rounded-lg shadow-md p-6">
+    <div className="bg-white rounded-lg shadow-md p-6 h-full flex flex-col min-h-0">
       {debugMsg && (
         <div className="mb-2 p-2 bg-yellow-100 text-yellow-900 rounded text-xs">
           {debugMsg}
@@ -514,22 +682,68 @@ const VideoCallComponent = ({ channelId, userId, userName, autoStart = false, pr
 
       {!isCallActive ? (
         <div className="text-center py-8">
-          <div className="mb-4">
-            <svg className="w-16 h-16 mx-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
-          </div>
-          <button
-            onClick={startCall}
-            className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 flex items-center mx-auto"
-          >
-            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-            </svg>
-            Start Video Call
-          </button>
+          {channelId && channelId.startsWith('call_') && !autoStart ? (
+            // Waiting for recipient to accept
+            <div>
+              <div className="mb-4">
+                <div className="w-20 h-20 mx-auto bg-blue-100 rounded-full flex items-center justify-center animate-pulse">
+                  <svg className="w-10 h-10 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                </div>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-700 mb-2">Calling...</h3>
+              <p className="text-sm text-gray-500 mb-4">Waiting for recipient to accept</p>
+              <button
+                onClick={() => {
+                  if (onCancel) {
+                    onCancel();
+                  } else {
+                    endCall();
+                  }
+                }}
+                className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 flex items-center mx-auto"
+              >
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Cancel Call
+              </button>
+            </div>
+          ) : autoStart ? (
+            // Call accepted, starting...
+            <div>
+              <div className="mb-4">
+                <div className="w-20 h-20 mx-auto bg-green-100 rounded-full flex items-center justify-center animate-pulse">
+                  <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                </div>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-700 mb-2">Connecting...</h3>
+              <p className="text-sm text-gray-500">Starting the call...</p>
+            </div>
+          ) : (
+            // No call in progress, show start button
+            <div>
+              <div className="mb-4">
+                <svg className="w-16 h-16 mx-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <button
+                onClick={startCall}
+                className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 flex items-center mx-auto"
+              >
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                </svg>
+                Start Video Call
+              </button>
+            </div>
+          )}
         </div>
-      ) : (
+      ) : isCallActive ? (
         <div className="space-y-4">
           {/* Video Streams */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -549,7 +763,51 @@ const VideoCallComponent = ({ channelId, userId, userName, autoStart = false, pr
               <video
                 ref={remoteVideoRef}
                 autoPlay
-                className="w-full h-48 bg-gray-900 rounded-lg"
+                playsInline
+                muted={false}
+                className="w-full h-48 bg-gray-900 rounded-lg object-cover"
+                onLoadedMetadata={() => {
+                  addDebug('[video] Remote video metadata loaded');
+                  if (remoteVideoRef.current) {
+                    const video = remoteVideoRef.current;
+                    addDebug(`[video] Remote video dimensions: ${video.videoWidth}x${video.videoHeight}, readyState: ${video.readyState}`);
+                    video.play().catch(err => {
+                      addDebug('[video] Auto-play failed, trying manual play: ' + err.message);
+                    });
+                  }
+                }}
+                onLoadedData={() => {
+                  addDebug('[video] Remote video data loaded');
+                  if (remoteVideoRef.current) {
+                    const video = remoteVideoRef.current;
+                    addDebug(`[video] Remote video has data: ${video.videoWidth}x${video.videoHeight}`);
+                  }
+                }}
+                onCanPlay={() => {
+                  addDebug('[video] Remote video can play');
+                  if (remoteVideoRef.current) {
+                    const video = remoteVideoRef.current;
+                    addDebug(`[video] Remote video ready to play: ${video.videoWidth}x${video.videoHeight}, paused: ${video.paused}`);
+                  }
+                }}
+                onPlaying={() => {
+                  addDebug('[video] Remote video is now playing');
+                  if (remoteVideoRef.current) {
+                    const video = remoteVideoRef.current;
+                    addDebug(`[video] Remote video playing: ${video.videoWidth}x${video.videoHeight}, paused: ${video.paused}`);
+                  }
+                }}
+                onPlay={() => {
+                  addDebug('[video] Remote video started playing');
+                }}
+                onError={(e) => {
+                  addDebug('[video] Remote video error: ' + e);
+                  console.error('[video] Remote video element error:', e);
+                  if (remoteVideoRef.current) {
+                    const video = remoteVideoRef.current;
+                    addDebug(`[video] Error details - readyState: ${video.readyState}, networkState: ${video.networkState}, error: ${video.error?.message || 'none'}`);
+                  }
+                }}
               />
               <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-sm">
                 Remote
@@ -605,9 +863,9 @@ const VideoCallComponent = ({ channelId, userId, userName, autoStart = false, pr
               Participants ({participants.length})
             </h4>
             <div className="flex flex-wrap gap-2">
-              {participants.map((participant) => (
+              {participants.map((participant, index) => (
                 <span
-                  key={participant.id}
+                  key={`${participant.id}-${index}`}
                   className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full"
                 >
                   {participant.name}
@@ -616,7 +874,7 @@ const VideoCallComponent = ({ channelId, userId, userName, autoStart = false, pr
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 };

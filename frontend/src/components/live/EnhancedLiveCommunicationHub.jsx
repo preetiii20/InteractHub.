@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import VideoCallComponent from '../common/VideoCallComponent';
+import JitsiVideoCall from '../common/JitsiVideoCall';
 import VoiceCallComponent from '../common/VoiceCallComponent';
 import ChatWindow from '../common/ChatWindow';
 import GroupInfoModal from '../common/GroupInfoModal';
@@ -31,6 +31,8 @@ const EnhancedLiveCommunicationHub = () => {
     const [activeTab, setActiveTab] = useState('chat');
     const [conversations, setConversations] = useState(new Map());
     const [activeConversationId, setActiveConversationId] = useState(null);
+    const channelIdHandledRef = React.useRef(false);
+    const lastChannelIdRef = React.useRef(null);
     const [unreadCounts, setUnreadCounts] = useState(new Map());
     const [notifications, setNotifications] = useState([]);
     const [directory, setDirectory] = useState([]);
@@ -43,6 +45,8 @@ const EnhancedLiveCommunicationHub = () => {
     const [incoming, setIncoming] = useState(null);
     const [overrideChannelId, setOverrideChannelId] = useState('');
     const [prefetchMedia, setPrefetchMedia] = useState(false);
+    const [outgoingCall, setOutgoingCall] = useState(null); // Track outgoing call state
+    const outgoingCallRef = React.useRef(null); // Ref to track outgoing call for callbacks
     const [notificationPermission, setNotificationPermission] = useState('default');
     const [isConnected, setIsConnected] = useState(false);
     const wsClientRef = React.useRef(null);
@@ -60,6 +64,30 @@ const EnhancedLiveCommunicationHub = () => {
             setNotificationPermission(Notification.permission);
         }
     }, []);
+
+    // Initialize unread counts from localStorage
+    useEffect(() => {
+        try {
+            const stored = localStorage.getItem('chat_unread_counts');
+            if (stored) {
+                const counts = JSON.parse(stored);
+                const map = new Map(Object.entries(counts));
+                setUnreadCounts(map);
+            }
+        } catch (e) {
+            console.error('Error loading unread counts:', e);
+        }
+    }, []);
+
+    // Save unread counts to localStorage
+    useEffect(() => {
+        try {
+            const obj = Object.fromEntries(unreadCounts);
+            localStorage.setItem('chat_unread_counts', JSON.stringify(obj));
+        } catch (e) {
+            console.error('Error saving unread counts:', e);
+        }
+    }, [unreadCounts]);
 
     // Load directory and initialize conversations
     useEffect(() => {
@@ -130,10 +158,68 @@ const EnhancedLiveCommunicationHub = () => {
         load();
     }, [selfIdentifier, userName]);
 
-    // Read channelId from URL and set active conversation
+    // Helper: clear channelId query param after navigation to avoid forcing chat selection again
+    const clearChannelIdParam = useCallback(() => {
+        const url = new URL(window.location.href);
+        if (url.searchParams.has('channelId')) {
+            url.searchParams.delete('channelId');
+            window.history.replaceState({}, '', url.toString());
+        }
+    }, []);
+
+    // Select conversation
+    const selectConversation = useCallback((conversationId) => {
+        setActiveConversationId(conversationId);
+        setActiveTab('chat');
+        clearChannelIdParam();
+        // Clear unread count
+        setUnreadCounts(prev => {
+            const newCounts = new Map(prev);
+            newCounts.set(conversationId, 0);
+            return newCounts;
+        });
+    }, [clearChannelIdParam]);
+
+    // Read channelId from URL and set active conversation (only once)
     useEffect(() => {
         const urlParams = new URLSearchParams(window.location.search);
         const channelIdFromUrl = urlParams.get('channelId');
+        
+        // Only process the URL param if it's new
+        if (channelIdHandledRef.current && channelIdFromUrl === lastChannelIdRef.current) {
+            return;
+        }
+        if (channelIdFromUrl) {
+            channelIdHandledRef.current = true;
+            lastChannelIdRef.current = channelIdFromUrl;
+        }
+        
+        // Check for pending call from notification click
+        const pendingCallStr = sessionStorage.getItem('pendingCall');
+        if (pendingCallStr) {
+            try {
+                const pendingCall = JSON.parse(pendingCallStr);
+                console.log('📞 Pending call found:', pendingCall);
+                sessionStorage.removeItem('pendingCall');
+                
+                // Set incoming call state to show modal
+                setIncoming({
+                    fromUser: pendingCall.fromUser,
+                    callType: pendingCall.callType || 'VIDEO',
+                    roomId: pendingCall.roomId
+                });
+                
+                // Navigate to the conversation if it exists
+                if (pendingCall.roomId) {
+                    // For calls, the roomId is the channelId
+                    setOverrideChannelId(pendingCall.roomId);
+                    setActiveTab(pendingCall.callType === 'VOICE' ? 'voice' : 'video');
+                }
+            } catch (e) {
+                console.error('Error parsing pending call:', e);
+            }
+        }
+        
         if (channelIdFromUrl) {
             console.log('🔔 URL channelId found:', channelIdFromUrl);
             console.log('🔔 Available conversations:', Array.from(conversations.keys()));
@@ -143,6 +229,7 @@ const EnhancedLiveCommunicationHub = () => {
                 console.log('🔔 Conversation found, setting as active:', channelIdFromUrl);
                 setActiveConversationId(channelIdFromUrl);
                 setActiveTab('chat');
+                clearChannelIdParam();
                 // Clear unread count
                 setUnreadCounts(prev => {
                     const newCounts = new Map(prev);
@@ -174,10 +261,31 @@ const EnhancedLiveCommunicationHub = () => {
                     });
                     setActiveConversationId(channelIdFromUrl);
                     setActiveTab('chat');
+                    clearChannelIdParam();
                 }
             }
         }
-    }, [conversations, selfIdentifier, nameMap]);
+    }, [conversations, selfIdentifier, nameMap, clearChannelIdParam]);
+
+    // Listen for in-app notification click events to open chats without full reload
+    useEffect(() => {
+        const handleChatOpen = (event) => {
+            const channelId = event?.detail?.channelId;
+            if (!channelId) return;
+
+            // If conversation exists, select it; otherwise, set as override so ChatWindow can still attach
+            if (conversations.has(channelId)) {
+                selectConversation(channelId);
+            } else {
+                setActiveConversationId(channelId);
+                setActiveTab('chat');
+            }
+            clearChannelIdParam();
+        };
+
+        window.addEventListener('chat:open', handleChatOpen);
+        return () => window.removeEventListener('chat:open', handleChatOpen);
+    }, [conversations, selectConversation, clearChannelIdParam]);
 
     // Show browser notification
     const showBrowserNotification = useCallback((from, content, conversationId) => {
@@ -240,7 +348,8 @@ const EnhancedLiveCommunicationHub = () => {
         if (channelId !== activeConversationId) {
             setUnreadCounts(prev => {
                 const newCounts = new Map(prev);
-                newCounts.set(channelId, (newCounts.get(channelId) || 0) + 1);
+                const currentCount = newCounts.get(channelId) || 0;
+                newCounts.set(channelId, currentCount + 1);
                 return newCounts;
             });
             
@@ -251,18 +360,6 @@ const EnhancedLiveCommunicationHub = () => {
             showToastNotification('message', from, message.content || 'New message', channelId);
         }
     }, [activeConversationId, nameMap, showBrowserNotification, showToastNotification]);
-
-    // Select conversation
-    const selectConversation = useCallback((conversationId) => {
-        setActiveConversationId(conversationId);
-        setActiveTab('chat');
-        // Clear unread count
-        setUnreadCounts(prev => {
-            const newCounts = new Map(prev);
-            newCounts.delete(conversationId);
-            return newCounts;
-        });
-    }, []);
 
     // Create group
     const handleCreateGroup = useCallback(async (groupName, members) => {
@@ -330,12 +427,48 @@ const EnhancedLiveCommunicationHub = () => {
             setShowCreateGroupModal(false);
             setActiveConversationId(groupId);
             
+            // Subscribe to the new group's messages using persistent WebSocket
+            try {
+                const persistentWebSocketService = (await import('../../services/PersistentWebSocketService')).default;
+                if (persistentWebSocketService.client && persistentWebSocketService.isConnected) {
+                    const topic = `/topic/group.${groupId}`;
+                    console.log('📡 Subscribing to new group topic:', topic);
+                    persistentWebSocketService.client.subscribe(topic, (frame) => {
+                        try {
+                            const newMsg = JSON.parse(frame.body || '{}');
+                            console.log('📨 Received group message (new group subscription):', newMsg);
+                            
+                            // Update conversation with new message
+                            setConversations(prev => {
+                                const newConvs = new Map(prev);
+                                const conv = newConvs.get(groupId);
+                                if (conv) {
+                                    newConvs.set(groupId, {
+                                        ...conv,
+                                        lastMessage: newMsg.content || '',
+                                        lastMessageTime: new Date(newMsg.sentAt || Date.now())
+                                    });
+                                }
+                                return newConvs;
+                            });
+                            
+                            // Trigger new message handler
+                            handleNewMessage({ ...newMsg, channelId: groupId });
+                        } catch (error) {
+                            console.error('❌ Error handling group message:', error);
+                        }
+                    }, { id: `global-grp-${groupId}` });
+                }
+            } catch (error) {
+                console.error('❌ Error subscribing to new group:', error);
+            }
+            
             console.log('✅ Group created successfully:', groupId);
         } catch (e) {
             console.error('❌ Error creating group:', e);
             alert('Failed to create group. Please try again.');
         }
-    }, [selfIdentifier, userName]);
+    }, [selfIdentifier, userName, handleNewMessage]);
 
     // Subscribe for call and group notifications using persistent service
     useEffect(() => {
@@ -351,7 +484,147 @@ const EnhancedLiveCommunicationHub = () => {
                 // Subscribe to messages
                 const unsubscribe = persistentWebSocketService.subscribe('EnhancedLiveCommunicationHub', (payload) => {
                     handleWebSocketMessage(payload);
+                    
+                    // Track unread for chat messages
+                    if (payload.content && payload.channelId && payload.senderName !== selfIdentifier) {
+                        const channelId = payload.channelId;
+                        if (channelId !== activeConversationId) {
+                            setUnreadCounts(prev => {
+                                const newCounts = new Map(prev);
+                                const currentCount = newCounts.get(channelId) || 0;
+                                newCounts.set(channelId, currentCount + 1);
+                                return newCounts;
+                            });
+                        }
+                    }
                 });
+                
+                // Subscribe to call end events for all active calls
+                if (persistentWebSocketService.client && persistentWebSocketService.isConnected) {
+                    // Subscribe to call end topic (generic for all calls)
+                    persistentWebSocketService.client.subscribe('/topic/call.end', (frame) => {
+                        try {
+                            const callEndEvent = JSON.parse(frame.body || '{}');
+                            console.log('📞 Received call end event:', callEndEvent);
+                            handleWebSocketMessage(callEndEvent);
+                        } catch (error) {
+                            console.error('Error handling call end event:', error);
+                        }
+                    }, { id: 'call-end-subscription' });
+                }
+                
+                // Subscribe to all groups (from backend and localStorage)
+                const subscribeToGroups = async () => {
+                    try {
+                        const groupIdsSet = new Set();
+                        
+                        // First, try to fetch groups from backend
+                        try {
+                            const response = await fetch(`http://localhost:8085/api/group/user/${encodeURIComponent(selfIdentifier)}/groups`, { credentials: 'include' });
+                            if (response.ok) {
+                                const backendGroups = await response.json();
+                                console.log('📡 Fetched groups from backend:', backendGroups);
+                                backendGroups.forEach(group => {
+                                    if (group.groupId) {
+                                        groupIdsSet.add(group.groupId);
+                                        // Also update localStorage and conversations
+                                        setConversations(prev => {
+                                            const newConvs = new Map(prev);
+                                            if (!newConvs.has(group.groupId)) {
+                                                newConvs.set(group.groupId, {
+                                                    id: group.groupId,
+                                                    name: group.name,
+                                                    type: 'group',
+                                                    participants: group.members || [],
+                                                    lastMessage: '',
+                                                    lastMessageTime: group.createdAt ? new Date(group.createdAt) : null,
+                                                    isOnline: false
+                                                });
+                                            }
+                                            return newConvs;
+                                        });
+                                        
+                                        // Update localStorage
+                                        try {
+                                            const storedGroups = JSON.parse(localStorage.getItem('chat_groups') || '{}');
+                                            storedGroups[group.groupId] = {
+                                                name: group.name,
+                                                members: group.members || [],
+                                                createdAt: group.createdAt,
+                                                createdBy: group.createdBy
+                                            };
+                                            localStorage.setItem('chat_groups', JSON.stringify(storedGroups));
+                                        } catch (e) {
+                                            console.error('Error updating localStorage:', e);
+                                        }
+                                    }
+                                });
+                            }
+                        } catch (error) {
+                            console.warn('⚠️ Could not fetch groups from backend, using localStorage:', error);
+                        }
+                        
+                        // Also add groups from localStorage (fallback)
+                        try {
+                            const storedGroups = JSON.parse(localStorage.getItem('chat_groups') || '{}');
+                            Object.keys(storedGroups).forEach(groupId => groupIdsSet.add(groupId));
+                        } catch (e) {
+                            console.error('Error reading localStorage groups:', e);
+                        }
+                        
+                        const groupIds = Array.from(groupIdsSet);
+                        console.log('📡 Subscribing to all user groups:', groupIds);
+                        
+                        if (persistentWebSocketService.client && persistentWebSocketService.isConnected) {
+                            groupIds.forEach(groupId => {
+                                // Remove GROUP_ prefix if present for topic subscription
+                                const cleanGroupId = groupId.replace(/^GROUP_/, '');
+                                const topic = `/topic/group.${cleanGroupId}`;
+                                console.log('📡 Subscribing to group topic:', topic, 'for groupId:', cleanGroupId);
+                                try {
+                                    const subscription = persistentWebSocketService.client.subscribe(topic, (frame) => {
+                                        try {
+                                            const newMsg = JSON.parse(frame.body || '{}');
+                                            console.log('📨 Received group message (global subscription):', newMsg, 'for group:', cleanGroupId);
+                                            
+                                            // Update conversation with new message
+                                            setConversations(prev => {
+                                                const newConvs = new Map(prev);
+                                                // Try both with and without GROUP_ prefix
+                                                const conv = newConvs.get(cleanGroupId) || newConvs.get(`GROUP_${cleanGroupId}`) || newConvs.get(groupId);
+                                                if (conv) {
+                                                    const convKey = conv.id || cleanGroupId;
+                                                    newConvs.set(convKey, {
+                                                        ...conv,
+                                                        lastMessage: newMsg.content || '',
+                                                        lastMessageTime: new Date(newMsg.sentAt || Date.now())
+                                                    });
+                                                }
+                                                return newConvs;
+                                            });
+                                            
+                                            // Trigger new message handler
+                                            handleNewMessage({ ...newMsg, channelId: cleanGroupId, groupId: cleanGroupId });
+                                        } catch (error) {
+                                            console.error('❌ Error handling group message:', error);
+                                        }
+                                    }, { id: `global-grp-${cleanGroupId}` });
+                                    console.log('✅ Group subscription created:', topic, subscription ? 'success' : 'failed');
+                                } catch (error) {
+                                    console.error(`❌ Error subscribing to group ${cleanGroupId}:`, error);
+                                }
+                            });
+                        } else {
+                            console.warn('⚠️ WebSocket not connected, retrying group subscriptions in 1 second...');
+                            setTimeout(subscribeToGroups, 1000);
+                        }
+                    } catch (error) {
+                        console.error('❌ Error loading groups for subscription:', error);
+                    }
+                };
+                
+                // Wait a bit for connection to be fully established
+                setTimeout(subscribeToGroups, 500);
                 
                 return unsubscribe;
             } catch (error) {
@@ -367,7 +640,7 @@ const EnhancedLiveCommunicationHub = () => {
         return () => {
             if (unsubscribe) unsubscribe();
         };
-    }, [selfIdentifier]);
+    }, [selfIdentifier, handleNewMessage]);
 
     // Handle WebSocket messages
     const handleWebSocketMessage = useCallback((payload) => {
@@ -376,6 +649,40 @@ const EnhancedLiveCommunicationHub = () => {
         if (payload.type === 'incoming_call') {
             setIncoming({ fromUser: payload.fromUser, callType: (payload.callType || 'VIDEO').toUpperCase(), roomId: payload.roomId });
             showToastNotification('call', payload.fromUser, `Incoming ${payload.callType} call`, '');
+        } else if (payload.type === 'call-accepted') {
+            // Call was accepted by recipient, now start the call
+            console.log('✅ Call accepted event received!', payload);
+            const currentOutgoingCall = outgoingCallRef.current;
+            console.log('✅ Checking outgoing call:', { currentOutgoingCall, payloadRoomId: payload.roomId });
+            if (currentOutgoingCall && currentOutgoingCall.roomId === payload.roomId) {
+                console.log('✅ Starting call for sender, roomId:', payload.roomId);
+                setAutoStart(true);
+                setPrefetchMedia(true);
+                // Don't clear outgoingCall yet - let the call component handle it
+            } else {
+                console.log('⚠️ Call accepted but no matching outgoing call', { currentOutgoingCall, payload });
+            }
+        } else if (payload.type === 'call-declined') {
+            // Call was declined by recipient
+            const currentOutgoingCall = outgoingCallRef.current;
+            if (currentOutgoingCall && currentOutgoingCall.roomId === payload.roomId) {
+                alert('Call declined by recipient');
+                setOutgoingCall(null);
+                outgoingCallRef.current = null;
+                setOverrideChannelId('');
+                setActiveTab('chat');
+            }
+        } else if (payload.type === 'call-ended') {
+            // Call was ended by the other participant
+            console.log('📞 Call ended by other participant:', payload);
+            if (activeTab === 'video' || activeTab === 'voice') {
+                // Only end if we're in a call
+                if (overrideChannelId === payload.roomId || activeConversationId === payload.roomId) {
+                    console.log('🔴 Ending call because other participant ended it');
+                    handleCallEnd();
+                    showToastNotification('message', 'System', 'Call ended by other participant', '');
+                }
+            }
         } else if (payload.type === 'group_created' || payload.type === 'NEW_GROUP') {
             // Check if this notification is for the current user
             if (payload.members && Array.isArray(payload.members)) {
@@ -449,19 +756,45 @@ const EnhancedLiveCommunicationHub = () => {
         const roomId = `call_${Date.now()}_${selfIdentifier}`;
         const participants = conv.participants.filter(p => p !== selfIdentifier);
         
+        console.log('📞 Starting video call:', { selfIdentifier, participants, roomId });
+        
+        // Show toast notification that call is being initiated
+        showToastNotification('call', 'You', `Calling ${conv.name}...`, activeConversationId);
+        
         try {
             const base = apiConfig.chatService;
             await Promise.all(participants.map(async (to) => {
-                await fetch(`${base}/call/start`, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                console.log('📞 Sending call request to:', to);
+                const response = await fetch(`${base}/call/start`, {
+                    method: 'POST', 
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
                     body: JSON.stringify({ fromUser: selfIdentifier, toUser: to, callType: 'VIDEO', roomId })
                 });
+                
+                if (!response.ok) {
+                    console.error('❌ Failed to start call:', response.status);
+                } else {
+                    const result = await response.json();
+                    console.log('✅ Call request sent successfully:', result);
+                }
             }));
-        } catch {}
+        } catch (error) {
+            console.error('❌ Error starting video call:', error);
+            alert('Failed to start call. Please try again.');
+            return;
+        }
         
+        // Don't auto-start - wait for recipient to accept
         setOverrideChannelId(roomId);
         setActiveTab('video');
-        setTimeout(() => setAutoStart(true), 0);
+        // Set a flag to show "calling" state instead of auto-starting
+        setAutoStart(false);
+        setPrefetchMedia(false);
+        // Track outgoing call
+        const callData = { roomId, callType: 'VIDEO', toUsers: participants };
+        setOutgoingCall(callData);
+        outgoingCallRef.current = callData;
     };
 
     // Start voice call
@@ -473,19 +806,88 @@ const EnhancedLiveCommunicationHub = () => {
         const roomId = `call_${Date.now()}_${selfIdentifier}`;
         const participants = conv.participants.filter(p => p !== selfIdentifier);
         
+        console.log('📞 Starting voice call:', { selfIdentifier, participants, roomId });
+        
+        // Show toast notification that call is being initiated
+        showToastNotification('call', 'You', `Calling ${conv.name}...`, activeConversationId);
+        
         try {
             const base = apiConfig.chatService;
             await Promise.all(participants.map(async (to) => {
-                await fetch(`${base}/call/start`, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                console.log('📞 Sending call request to:', to);
+                const response = await fetch(`${base}/call/start`, {
+                    method: 'POST', 
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
                     body: JSON.stringify({ fromUser: selfIdentifier, toUser: to, callType: 'VOICE', roomId })
                 });
+                
+                if (!response.ok) {
+                    console.error('❌ Failed to start call:', response.status);
+                } else {
+                    const result = await response.json();
+                    console.log('✅ Call request sent successfully:', result);
+                }
             }));
-        } catch {}
+        } catch (error) {
+            console.error('❌ Error starting voice call:', error);
+            alert('Failed to start call. Please try again.');
+            return;
+        }
         
+        // Don't auto-start - wait for recipient to accept
         setOverrideChannelId(roomId);
         setActiveTab('voice');
-        setTimeout(() => setAutoStart(true), 0);
+        // Set a flag to show "calling" state instead of auto-starting
+        setAutoStart(false);
+        setPrefetchMedia(false);
+        // Track outgoing call
+        const callData = { roomId, callType: 'VOICE', toUsers: participants };
+        setOutgoingCall(callData);
+        outgoingCallRef.current = callData;
+    };
+
+    // Cancel outgoing call
+    const cancelOutgoingCall = async () => {
+        if (!outgoingCall) return;
+        
+        // Notify recipients that the call was cancelled
+        try {
+            const base = apiConfig.chatService;
+            await Promise.all(outgoingCall.toUsers.map(async (to) => {
+                await fetch(`${base}/call/decline`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        fromUser: selfIdentifier,
+                        toUser: to,
+                        callType: outgoingCall.callType,
+                        roomId: outgoingCall.roomId
+                    })
+                });
+            }));
+        } catch (error) {
+            console.error('Error cancelling call:', error);
+        }
+        
+        // Clear outgoing call state
+        setOutgoingCall(null);
+        outgoingCallRef.current = null;
+        setOverrideChannelId('');
+        setActiveTab('chat');
+        setAutoStart(false);
+        setPrefetchMedia(false);
+    };
+
+    // Handle call end - redirect to chat
+    const handleCallEnd = () => {
+        setOutgoingCall(null);
+        outgoingCallRef.current = null;
+        setOverrideChannelId('');
+        setActiveTab('chat');
+        setAutoStart(false);
+        setPrefetchMedia(false);
     };
 
     // Filter conversations by search
@@ -580,13 +982,13 @@ const EnhancedLiveCommunicationHub = () => {
                                                                         {conv.name}
                                                                     </h3>
                                                                     {conv.lastMessageTime && (
-                                                                        <span className="text-xs text-gray-500 flex-shrink-0 whitespace-nowrap">
+                                                                        <span className={`text-xs flex-shrink-0 whitespace-nowrap ${unreadCount > 0 ? 'text-blue-600 font-semibold' : 'text-gray-500'}`}>
                                                                             {getRelativeTime(conv.lastMessageTime)}
                                                                         </span>
                                                                     )}
                                                                 </div>
-                                                                <p className={`text-xs truncate ${unreadCount > 0 ? 'font-medium text-gray-700' : 'text-gray-600'}`}>
-                                                                    {conv.lastMessage || '💬 Start a conversation'}
+                                                                <p className={`text-xs truncate ${unreadCount > 0 ? 'font-semibold text-gray-800 bg-blue-50 px-1 py-0.5 rounded' : 'text-gray-600'}`}>
+                                                                    {conv.lastMessage ? conv.lastMessage.substring(0, 50) + (conv.lastMessage.length > 50 ? '...' : '') : '💬 No messages yet'}
                                                                 </p>
                                                             </div>
                                                             
@@ -673,8 +1075,40 @@ const EnhancedLiveCommunicationHub = () => {
                             </div>
                         </div>
                     )}
-                </div>
-
+                    
+                    {activeTab === 'video' && (
+                        <div className="flex w-full h-full min-h-0">
+                            <div className="flex-1 flex flex-col h-full min-h-0">
+                                <JitsiVideoCall
+                                    channelId={overrideChannelId || activeConversationId || ''}
+                                    userId={selfIdentifier}
+                                    userName={userName}
+                                    autoStart={autoStart}
+                                    prefetchMedia={prefetchMedia}
+                                    onCancel={cancelOutgoingCall}
+                                    onCallEnd={handleCallEnd}
+                                />
+                            </div>
+                        </div>
+                    )}
+                    
+                    {activeTab === 'voice' && (
+                        <div className="flex w-full h-full min-h-0">
+                            <div className="flex-1 flex flex-col h-full min-h-0">
+                                <VoiceCallComponent
+                                    channelId={overrideChannelId || activeConversationId || ''}
+                                    userId={selfIdentifier}
+                                    userName={userName}
+                                    autoStart={autoStart}
+                                    prefetchMedia={prefetchMedia}
+                                    onCancel={cancelOutgoingCall}
+                                    onCallEnd={handleCallEnd}
+                                />
+                            </div>
+                        </div>
+                    )}
+            </div>
+            
             {/* Toast Notifications */}
             {notifications.length > 0 && (
                 <div className="fixed top-4 right-4 z-50 space-y-2">
@@ -703,34 +1137,6 @@ const EnhancedLiveCommunicationHub = () => {
                 </div>
             )}
 
-            {/* Incoming Call Popup */}
-            {incoming && (
-                <div className="fixed bottom-6 right-6 bg-white shadow-2xl border-2 border-green-500 rounded-lg p-6 w-80 animate-bounce">
-                    <div className="font-semibold text-lg mb-1">Incoming {incoming.callType === 'VOICE' ? 'Voice' : 'Video'} Call</div>
-                    <div className="text-sm text-gray-600 mb-4">From: {nameMap[incoming.fromUser] || incoming.fromUser}</div>
-                    <div className="flex justify-end gap-2">
-                        <button 
-                            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100" 
-                            onClick={() => setIncoming(null)}
-                        >
-                            Decline
-                        </button>
-                        <button 
-                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700" 
-                            onClick={() => {
-                                setOverrideChannelId(incoming.roomId);
-                                setActiveTab(incoming.callType === 'VOICE' ? 'voice' : 'video');
-                                setAutoStart(false);
-                                setPrefetchMedia(true);
-                                setIncoming(null);
-                            }}
-                        >
-                            Accept
-                        </button>
-                    </div>
-                </div>
-            )}
-
             {/* Create Group Modal */}
             {showCreateGroupModal && (
                 <CreateGroupModal
@@ -743,7 +1149,7 @@ const EnhancedLiveCommunicationHub = () => {
             )}
 
             {/* Group Info Modal */}
-            {showGroupInfoModal && activeConversationId && conversations.get(activeConversationId)?.type === 'group' && (
+            {showGroupInfoModal && activeConversationId && conversations.get(activeConversationId)?.type === 'group' ? (
                 <GroupInfoModal
                     isOpen={showGroupInfoModal}
                     onClose={() => setShowGroupInfoModal(false)}
@@ -768,7 +1174,7 @@ const EnhancedLiveCommunicationHub = () => {
                         setActiveConversationId(null);
                     }}
                 />
-            )}
+            ) : null}
 
             {/* Incoming Call Modal */}
             {incoming && (
@@ -777,13 +1183,112 @@ const EnhancedLiveCommunicationHub = () => {
                     onClose={() => setIncoming(null)}
                     callerName={nameMap[incoming.fromUser] || incoming.fromUser}
                     callType={incoming.callType}
-                    onAccept={() => {
+                    onAccept={async () => {
+                        // Notify the caller that we accepted
+                        try {
+                            const base = apiConfig.chatService;
+                            console.log('📞 Accepting call, sending to:', `${base}/call/accept`);
+                            const response = await fetch(`${base}/call/accept`, {
+                                method: 'POST',
+                                headers: { 
+                                    'Content-Type': 'application/json'
+                                },
+                                credentials: 'include',
+                                body: JSON.stringify({
+                                    fromUser: incoming.fromUser,
+                                    toUser: selfIdentifier,
+                                    callType: incoming.callType,
+                                    roomId: incoming.roomId
+                                })
+                            });
+                            
+                            if (!response.ok) {
+                                console.error('❌ Failed to accept call via REST, trying WebSocket fallback:', response.status);
+                                // Fallback: Send notification directly via WebSocket
+                                const persistentWebSocketService = (await import('../../services/PersistentWebSocketService')).default;
+                                if (persistentWebSocketService.client && persistentWebSocketService.isConnected) {
+                                    const callAccepted = {
+                                        type: 'call-accepted',
+                                        roomId: incoming.roomId,
+                                        fromUser: selfIdentifier, // The person who accepted
+                                        toUser: incoming.fromUser, // The original caller
+                                        callType: incoming.callType,
+                                        timestamp: Date.now()
+                                    };
+                                    const fromUserLower = incoming.fromUser.toLowerCase();
+                                    // Send to all the same topics the backend would use
+                                    persistentWebSocketService.client.publish({
+                                        destination: `/topic/user-notifications.${fromUserLower}`,
+                                        body: JSON.stringify(callAccepted)
+                                    });
+                                    persistentWebSocketService.client.publish({
+                                        destination: `/topic/notify.${fromUserLower}`,
+                                        body: JSON.stringify(callAccepted)
+                                    });
+                                    console.log('✅ Sent call-accepted notification via WebSocket fallback');
+                                } else {
+                                    console.error('❌ WebSocket not available for fallback');
+                                }
+                            } else {
+                                const result = await response.json();
+                                console.log('✅ Call accept response:', result);
+                            }
+                        } catch (error) {
+                            console.error('Error accepting call:', error);
+                            // Try WebSocket fallback even on network errors
+                            try {
+                                const persistentWebSocketService = (await import('../../services/PersistentWebSocketService')).default;
+                                if (persistentWebSocketService.client && persistentWebSocketService.isConnected) {
+                                    const callAccepted = {
+                                        type: 'call-accepted',
+                                        roomId: incoming.roomId,
+                                        fromUser: selfIdentifier,
+                                        toUser: incoming.fromUser,
+                                        callType: incoming.callType,
+                                        timestamp: Date.now()
+                                    };
+                                    const fromUserLower = incoming.fromUser.toLowerCase();
+                                    persistentWebSocketService.client.publish({
+                                        destination: `/topic/user-notifications.${fromUserLower}`,
+                                        body: JSON.stringify(callAccepted)
+                                    });
+                                    persistentWebSocketService.client.publish({
+                                        destination: `/topic/notify.${fromUserLower}`,
+                                        body: JSON.stringify(callAccepted)
+                                    });
+                                    console.log('✅ Sent call-accepted notification via WebSocket fallback (after error)');
+                                }
+                            } catch (wsError) {
+                                console.error('❌ WebSocket fallback also failed:', wsError);
+                            }
+                        }
+                        
                         setOverrideChannelId(incoming.roomId);
                         setActiveTab(incoming.callType === 'VOICE' ? 'voice' : 'video');
-                        setAutoStart(false);
+                        setAutoStart(true);
                         setPrefetchMedia(true);
+                        setIncoming(null);
                     }}
-                    onDecline={() => setIncoming(null)}
+                    onDecline={async () => {
+                        // Notify the caller that we declined
+                        try {
+                            const base = apiConfig.chatService;
+                            await fetch(`${base}/call/decline`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                credentials: 'include',
+                                body: JSON.stringify({
+                                    fromUser: incoming.fromUser,
+                                    toUser: selfIdentifier,
+                                    callType: incoming.callType,
+                                    roomId: incoming.roomId
+                                })
+                            });
+                        } catch (error) {
+                            console.error('Error declining call:', error);
+                        }
+                        setIncoming(null);
+                    }}
                 />
             )}
         </div>

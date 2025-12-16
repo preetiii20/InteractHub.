@@ -291,6 +291,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.core.io.ByteArrayResource;
@@ -615,12 +616,73 @@ public class GroupChatController {
         }
     }
 
+    // Get all groups for a user
+    @GetMapping("/user/{userEmail}/groups")
+    public ResponseEntity<List<Map<String, Object>>> getUserGroups(@PathVariable String userEmail) {
+        try {
+            String normalizedEmail = userEmail.toLowerCase();
+            List<GroupMember> memberships = memberRepo.findByMemberName(normalizedEmail);
+            List<Map<String, Object>> groups = new ArrayList<>();
+            
+            for (GroupMember membership : memberships) {
+                Optional<ChatGroup> groupOpt = groupRepo.findByGroupId(membership.getGroupId());
+                if (groupOpt.isPresent()) {
+                    ChatGroup group = groupOpt.get();
+                    List<GroupMember> allMembers = memberRepo.findByGroupId(membership.getGroupId());
+                    groups.add(Map.of(
+                        "groupId", group.getGroupId(),
+                        "name", group.getName(),
+                        "createdBy", group.getCreatedByName(),
+                        "createdAt", group.getCreatedAt().toString(),
+                        "members", allMembers.stream().map(GroupMember::getMemberName).collect(java.util.stream.Collectors.toList())
+                    ));
+                }
+            }
+            
+            return ResponseEntity.ok(groups);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(new ArrayList<>());
+        }
+    }
+
     // STOMP send: /app/group.send
     @MessageMapping("/group.send")
     public void send(GroupMessage msg) {
         if (msg.getSenderName() == null || msg.getSenderName().isBlank()) msg.setSenderName("User");
         if (msg.getGroupId() == null || msg.getGroupId().isBlank()) return;
         GroupMessage saved = msgRepo.save(msg);
+        
+        // Broadcast to group topic (for active subscribers)
         broker.convertAndSend("/topic/group."+saved.getGroupId(), saved);
+        
+        // Send notifications to all group members (for global notifications)
+        List<GroupMember> members = memberRepo.findByGroupId(saved.getGroupId());
+        String senderName = saved.getSenderName();
+        String preview = saved.getContent() != null && saved.getContent().length() > 100 
+            ? saved.getContent().substring(0, 100) + "..." 
+            : saved.getContent();
+        
+        for (GroupMember member : members) {
+            String memberEmail = member.getMemberName();
+            // Don't notify the sender
+            if (memberEmail != null && !memberEmail.equalsIgnoreCase(senderName)) {
+                String normalizedMemberEmail = memberEmail.toLowerCase();
+                Map<String, Object> notification = Map.of(
+                    "type", "group_message",
+                    "from", senderName,
+                    "groupId", saved.getGroupId(),
+                    "preview", preview != null ? preview : "New message",
+                    "sentAt", String.valueOf(saved.getSentAt())
+                );
+                
+                // Try user-specific destination (requires authentication)
+                broker.convertAndSend("/user/" + normalizedMemberEmail + "/queue/notify", notification);
+                
+                // Fallback: Also send to topic-based destination (doesn't require authentication)
+                String topicDest = "/topic/user-notifications." + normalizedMemberEmail;
+                broker.convertAndSend(topicDest, notification);
+            }
+        }
     }
 }

@@ -173,11 +173,23 @@ public class DirectChatController {
 
         // 3. Personal notify (notification): Target the recipient's unique email.
         String recipientId = saved.getRecipientName().toLowerCase(); 
-        broker.convertAndSend("/user/" + recipientId + "/queue/notify",
-            Map.of("type","dm",
-                   "from", saved.getSenderName(), // Sender's Email/ID
-                   "roomId", saved.getRoomId(),
-                   "preview", saved.getContent(), 
-                   "sentAt", String.valueOf(saved.getSentAt())));
+        Map<String, Object> notification = Map.of(
+            "type","dm",
+            "from", saved.getSenderName(), // Sender's Email/ID
+            "roomId", saved.getRoomId(),
+            "preview", saved.getContent(), 
+            "sentAt", String.valueOf(saved.getSentAt())
+        );
+        System.out.println("📢 Sending DM notification to: /user/" + recipientId + "/queue/notify");
+        System.out.println("📢 Notification payload: " + notification);
+        
+        // Try user-specific destination (requires authentication)
+        broker.convertAndSend("/user/" + recipientId + "/queue/notify", notification);
+        
+        // Fallback: Also send to topic-based destination (doesn't require authentication)
+        // This allows clients to subscribe without authentication
+        String topicDest = "/topic/user-notifications." + recipientId;
+        System.out.println("📢 Also sending to topic: " + topicDest);
+        broker.convertAndSend(topicDest, notification);
     }
 }

@@ -38,10 +38,16 @@ public class CallController {
             callNotification.put("callType", request.getCallType());
             callNotification.put("timestamp", System.currentTimeMillis());
             
+            // Normalize to lowercase
+            String toUser = request.getToUser().toLowerCase();
+            
             // Primary: user-destination (requires user session principal configured as email)
-            messagingTemplate.convertAndSend("/user/" + request.getToUser() + "/queue/notify", callNotification);
+            messagingTemplate.convertAndSend("/user/" + toUser + "/queue/notify", callNotification);
+            
             // Fallback: public topic per user-id so unauthenticated/simple clients can subscribe
-            messagingTemplate.convertAndSend("/topic/notify." + request.getToUser(), callNotification);
+            // Use the same topic format as other notifications
+            messagingTemplate.convertAndSend("/topic/user-notifications." + toUser, callNotification);
+            messagingTemplate.convertAndSend("/topic/notify." + toUser, callNotification);
             
             return ResponseEntity.ok(response);
         } catch (Exception e) {
@@ -124,6 +130,64 @@ public class CallController {
         } catch (Exception e) {
             Map<String, Object> error = new HashMap<>();
             error.put("error", "Failed to handle candidate: " + e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+
+    @PostMapping("/accept")
+    public ResponseEntity<?> acceptCall(@RequestBody CallRequest request) {
+        try {
+            Map<String, Object> callAccepted = new HashMap<>();
+            callAccepted.put("type", "call-accepted");
+            callAccepted.put("roomId", request.getRoomId());
+            callAccepted.put("fromUser", request.getToUser()); // The person who accepted
+            callAccepted.put("toUser", request.getFromUser()); // The original caller
+            callAccepted.put("callType", request.getCallType());
+            callAccepted.put("timestamp", System.currentTimeMillis());
+            
+            // Notify the caller that the call was accepted
+            String fromUser = request.getFromUser().toLowerCase();
+            messagingTemplate.convertAndSend("/user/" + fromUser + "/queue/notify", callAccepted);
+            messagingTemplate.convertAndSend("/topic/user-notifications." + fromUser, callAccepted);
+            messagingTemplate.convertAndSend("/topic/notify." + fromUser, callAccepted);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("status", "call_accepted");
+            response.put("message", "Call accepted successfully");
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "Failed to accept call: " + e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        }
+    }
+
+    @PostMapping("/decline")
+    public ResponseEntity<?> declineCall(@RequestBody CallRequest request) {
+        try {
+            Map<String, Object> callDeclined = new HashMap<>();
+            callDeclined.put("type", "call-declined");
+            callDeclined.put("roomId", request.getRoomId());
+            callDeclined.put("fromUser", request.getToUser()); // The person who declined
+            callDeclined.put("toUser", request.getFromUser()); // The original caller
+            callDeclined.put("callType", request.getCallType());
+            callDeclined.put("timestamp", System.currentTimeMillis());
+            
+            // Notify the caller that the call was declined
+            String fromUser = request.getFromUser().toLowerCase();
+            messagingTemplate.convertAndSend("/user/" + fromUser + "/queue/notify", callDeclined);
+            messagingTemplate.convertAndSend("/topic/user-notifications." + fromUser, callDeclined);
+            messagingTemplate.convertAndSend("/topic/notify." + fromUser, callDeclined);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("status", "call_declined");
+            response.put("message", "Call declined successfully");
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "Failed to decline call: " + e.getMessage());
             return ResponseEntity.badRequest().body(error);
         }
     }

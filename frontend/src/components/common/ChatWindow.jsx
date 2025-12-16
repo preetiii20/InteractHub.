@@ -5,6 +5,21 @@ import { Avatar } from '../../utils/avatarGenerator';
 import { getRelativeTime, isSameDay, getDateOnly } from '../../utils/timeFormatter';
 import SystemMessage from './SystemMessage';
 import ConnectionStatus from './ConnectionStatus';
+import MessageReactions from './MessageReactions';
+import ChatSearch from './ChatSearch';
+import MessageOptions from './MessageOptions';
+import QuotedMessage from './QuotedMessage';
+import LinkPreview from './LinkPreview';
+import { 
+  formatMessageTime, 
+  formatMessageDate,
+  getStatusIcon,
+  getStatusColor,
+  canDeleteMessage,
+  getDeleteTimeRemaining,
+  searchMessages,
+  EMOJI_REACTIONS
+} from '../../utils/whatsappFeatures';
 
 // Shared chat window for Admin and Manager
 // Props:
@@ -19,14 +34,23 @@ const ChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage }) => {
     const [uploadProgress, setUploadProgress] = useState(0);
     const [typingUsers, setTypingUsers] = useState([]);
     const [isConnected, setIsConnected] = useState(false);
+    const [showSearch, setShowSearch] = useState(false);
+    const [searchResults, setSearchResults] = useState([]);
+    const [quotedMessage, setQuotedMessage] = useState(null);
+    const [selectedMessage, setSelectedMessage] = useState(null);
+    const [messageReactions, setMessageReactions] = useState({});
+    const [highlightedMessageId, setHighlightedMessageId] = useState(null);
     const fileInputRef = useRef(null);
     const stompRef = useRef(null);
     const typingTimeoutRef = useRef(null);
+    const messageRefs = useRef({});
 
-    const isGroup = channelId?.startsWith('GROUP_');
-    const isDm = channelId?.startsWith('DM_');
-    const dmRoom = isDm ? channelId.replace(/^DM_/, '') : '';
-    const groupId = isGroup ? channelId.replace(/^GROUP_/, '') : '';
+    // Support both prefixed IDs (GROUP_x) and raw UUIDs (no prefix)
+    const normalizedChannelId = channelId || '';
+    const isDm = normalizedChannelId.startsWith('DM_');
+    const isGroup = normalizedChannelId.startsWith('GROUP_') || (!isDm && !!normalizedChannelId);
+    const dmRoom = isDm ? normalizedChannelId.replace(/^DM_/, '') : '';
+    const groupId = isGroup ? normalizedChannelId.replace(/^GROUP_/, '') : '';
     
     // Use the unique identifier in lowercase for comparison logic
     const normalizedSelfIdentifier = (selfIdentifier || selfName || '').trim().toLowerCase();
@@ -38,7 +62,9 @@ const ChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage }) => {
         const client = new Client({ webSocketFactory: () => socket, reconnectDelay: 2000 });
 
         client.onConnect = () => {
+            console.log('✅ WebSocket connected for chat:', { isDm, isGroup, dmRoom, groupId, connected: client.connected });
             setIsConnected(true);
+            stompRef.current = client;
             if (isDm && dmRoom) {
                 // Subscription path for DM message delivery: /queue/dm.alice@corp.com|bob@corp.com
                 client.subscribe(`/queue/dm.${dmRoom}`, frame => {
@@ -67,17 +93,51 @@ const ChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage }) => {
                         }
                     } catch {}
                 });
+
+                // Subscribe to reactions for DM
+                client.subscribe(`/topic/reactions.${dmRoom}`, frame => {
+                    try {
+                        console.log('📥 Received reaction event:', frame.body);
+                        const reaction = JSON.parse(frame.body || '{}');
+                        console.log('✅ Parsed reaction:', reaction);
+                        if (reaction.type === 'add') {
+                            console.log('➕ Adding reaction to messageId:', reaction.messageId);
+                            setMessageReactions(prev => ({
+                                ...prev,
+                                [reaction.messageId]: {
+                                    ...prev[reaction.messageId],
+                                    [reaction.emoji]: [...(prev[reaction.messageId]?.[reaction.emoji] || []), reaction.userId]
+                                }
+                            }));
+                        } else if (reaction.type === 'remove') {
+                            console.log('➖ Removing reaction from messageId:', reaction.messageId);
+                            setMessageReactions(prev => ({
+                                ...prev,
+                                [reaction.messageId]: {
+                                    ...prev[reaction.messageId],
+                                    [reaction.emoji]: (prev[reaction.messageId]?.[reaction.emoji] || []).filter(u => u !== reaction.userId)
+                                }
+                            }));
+                        }
+                    } catch (error) {
+                        console.error('❌ Error parsing reaction:', error);
+                    }
+                }, { id: `reactions-${dmRoom}` });
             }
             if (isGroup && groupId) {
+                console.log('📡 Subscribing to group messages:', `/topic/group.${groupId}`);
                 client.subscribe(`/topic/group.${groupId}`, frame => {
                     try { 
                         const newMsg = JSON.parse(frame.body || '{}');
+                        console.log('📨 Received group message:', newMsg);
                         setMessages(prev => [...prev, newMsg]);
                         // Trigger callback if message is from someone else
-                        if (onNewMessage && newMsg.senderName !== selfName) {
+                        if (onNewMessage && newMsg.senderName !== normalizedSelfIdentifier && newMsg.senderName !== selfName) {
                             onNewMessage(newMsg);
                         }
-                    } catch {}
+                    } catch (error) {
+                        console.error('❌ Error parsing group message:', error);
+                    }
                 }, { id: `grp-${groupId}` });
                 
                 // Subscribe to typing indicators for group
@@ -95,6 +155,36 @@ const ChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage }) => {
                         }
                     } catch {}
                 });
+
+                // Subscribe to reactions for group
+                client.subscribe(`/topic/reactions.${groupId}`, frame => {
+                    try {
+                        console.log('📥 Received reaction event:', frame.body);
+                        const reaction = JSON.parse(frame.body || '{}');
+                        console.log('✅ Parsed reaction:', reaction);
+                        if (reaction.type === 'add') {
+                            console.log('➕ Adding reaction to messageId:', reaction.messageId);
+                            setMessageReactions(prev => ({
+                                ...prev,
+                                [reaction.messageId]: {
+                                    ...prev[reaction.messageId],
+                                    [reaction.emoji]: [...(prev[reaction.messageId]?.[reaction.emoji] || []), reaction.userId]
+                                }
+                            }));
+                        } else if (reaction.type === 'remove') {
+                            console.log('➖ Removing reaction from messageId:', reaction.messageId);
+                            setMessageReactions(prev => ({
+                                ...prev,
+                                [reaction.messageId]: {
+                                    ...prev[reaction.messageId],
+                                    [reaction.emoji]: (prev[reaction.messageId]?.[reaction.emoji] || []).filter(u => u !== reaction.userId)
+                                }
+                            }));
+                        }
+                    } catch (error) {
+                        console.error('❌ Error parsing reaction:', error);
+                    }
+                }, { id: `reactions-${groupId}` });
             }
         };
 
@@ -136,26 +226,52 @@ const ChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage }) => {
         const content = (text || '').trim();
         if (!content && !uploading) return;
 
-        if (isDm && dmRoom) {
-            const [userA, userB] = dmRoom.split('|');
-            
-            // CRITICAL FIX: Use the unique identifier for comparison to determine the recipient's identifier
-            const recipientLower = normalizedSelfIdentifier === userA ? userB : userA;
-            
-            // FIX: senderName and recipientName are both set to the unique EMAIL/ID for backend routing
-            const payload = { 
-                roomId: dmRoom, 
-                senderName: normalizedSelfIdentifier, // Send SENDER'S EMAIL as the routing ID
-                recipientName: recipientLower,       // Send RECIPIENT'S EMAIL as the routing ID
-                content 
-            };
-            
-            stompRef.current?.publish({ destination: '/app/dm.send', body: JSON.stringify(payload) });
-        } else if (isGroup && groupId) {
-            const payload = { groupId, senderName: senderDisplayName, content };
-            stompRef.current?.publish({ destination: '/app/group.send', body: JSON.stringify(payload) });
+        // Check if WebSocket is connected
+        if (!stompRef.current || !isConnected) {
+            console.error('❌ Cannot send message: WebSocket not connected');
+            console.log('Connection status:', { hasClient: !!stompRef.current, isConnected, connected: stompRef.current?.connected });
+            alert('Connection not ready. Please wait a moment and try again.');
+            return;
         }
-        setText('');
+
+        try {
+            // Double-check that the STOMP connection is active
+            if (!stompRef.current.connected) {
+                console.error('❌ STOMP client not connected');
+                alert('Connection lost. Reconnecting...');
+                return;
+            }
+
+            if (isDm && dmRoom) {
+                const [userA, userB] = dmRoom.split('|');
+                
+                // CRITICAL FIX: Use the unique identifier for comparison to determine the recipient's identifier
+                const recipientLower = normalizedSelfIdentifier === userA ? userB : userA;
+                
+                // FIX: senderName and recipientName are both set to the unique EMAIL/ID for backend routing
+                const payload = { 
+                    roomId: dmRoom, 
+                    senderName: normalizedSelfIdentifier, // Send SENDER'S EMAIL as the routing ID
+                    recipientName: recipientLower,       // Send RECIPIENT'S EMAIL as the routing ID
+                    content 
+                };
+                
+                console.log('📤 Sending DM message:', payload);
+                stompRef.current.publish({ destination: '/app/dm.send', body: JSON.stringify(payload) });
+            } else if (isGroup && groupId) {
+                const payload = { 
+                    groupId, 
+                    senderName: normalizedSelfIdentifier, // Use email/identifier for consistency with backend
+                    content 
+                };
+                console.log('📤 Sending group message:', payload);
+                stompRef.current.publish({ destination: '/app/group.send', body: JSON.stringify(payload) });
+            }
+            setText('');
+        } catch (error) {
+            console.error('❌ Error sending message:', error);
+            alert('Failed to send message. Please try again.');
+        }
     };
 
     const handleFileUpload = async (event) => {
@@ -241,6 +357,77 @@ const ChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage }) => {
 
 
 
+    // Handle message reactions with WebSocket broadcast
+    const handleAddReaction = (messageId, emoji, userId) => {
+        console.log('😊 Adding reaction:', { messageId, emoji, userId, type: typeof messageId });
+        setMessageReactions(prev => ({
+            ...prev,
+            [messageId]: {
+                ...prev[messageId],
+                [emoji]: [...(prev[messageId]?.[emoji] || []), userId]
+            }
+        }));
+
+        // Broadcast reaction to other users via WebSocket
+        if (stompRef.current?.connected) {
+            const roomForReaction = isDm ? dmRoom : groupId;
+            const payload = {
+                roomId: roomForReaction,
+                messageId: String(messageId),
+                emoji,
+                userId,
+                isDm
+            };
+            console.log('📤 Publishing reaction.add:', payload);
+            stompRef.current.publish({
+                destination: '/app/reaction.add',
+                body: JSON.stringify(payload)
+            });
+        } else {
+            console.error('❌ WebSocket not connected, cannot send reaction');
+        }
+    };
+
+    const handleRemoveReaction = (messageId, emoji, userId) => {
+        console.log('😢 Removing reaction:', { messageId, emoji, userId, type: typeof messageId });
+        setMessageReactions(prev => ({
+            ...prev,
+            [messageId]: {
+                ...prev[messageId],
+                [emoji]: (prev[messageId]?.[emoji] || []).filter(u => u !== userId)
+            }
+        }));
+
+        // Broadcast reaction removal to other users via WebSocket
+        if (stompRef.current?.connected) {
+            const roomForReaction = isDm ? dmRoom : groupId;
+            const payload = {
+                roomId: roomForReaction,
+                messageId: String(messageId),
+                emoji,
+                userId,
+                isDm
+            };
+            console.log('📤 Publishing reaction.remove:', payload);
+            stompRef.current.publish({
+                destination: '/app/reaction.remove',
+                body: JSON.stringify(payload)
+            });
+        } else {
+            console.error('❌ WebSocket not connected, cannot send reaction');
+        }
+    };
+
+    const handleDeleteMessage = (messageId) => {
+        setMessages(prev => prev.filter(m => m.id !== messageId));
+        setSelectedMessage(null);
+    };
+
+    const handleCopyMessage = (content) => {
+        navigator.clipboard.writeText(content);
+        alert('Message copied!');
+    };
+
     // Local viewer: mine on right, others on left
     const Bubble = ({ m, showDateSeparator = false, prevMessage = null }) => {
         // We rely on the stored senderName (which is now the email) for styling comparison
@@ -253,15 +440,8 @@ const ChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage }) => {
         const isImage = m.fileType && m.fileType.startsWith('image/');
         const hasFile = m.fileUrl && m.fileName;
         const isSystemMessage = m.senderName === 'System' || m.type === 'SYSTEM';
-        
-        // Message status icons (WhatsApp-style)
-        const getStatusIcon = () => {
-            if (!mine) return null;
-            const status = m.status || 'SENT';
-            if (status === 'READ') return <span className="text-blue-300 text-xs ml-1">✓✓</span>;
-            if (status === 'DELIVERED') return <span className="text-gray-300 text-xs ml-1">✓✓</span>;
-            return <span className="text-gray-300 text-xs ml-1">✓</span>;
-        };
+        const canDelete = mine && canDeleteMessage(m.sentAt);
+        const deleteTimeRemaining = canDelete ? getDeleteTimeRemaining(m.sentAt) : null;
 
         if (isSystemMessage) {
             return <SystemMessage message={m.content} timestamp={m.sentAt} />;
@@ -276,19 +456,28 @@ const ChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage }) => {
                         </span>
                     </div>
                 )}
-                <div className={`flex ${align} mb-1.5 px-4 gap-1.5`}>
+                <div 
+                  ref={(el) => { if (el) messageRefs.current[m.id] = el; }}
+                  className={`flex ${align} mb-1.5 px-4 gap-1.5 ${highlightedMessageId === m.id ? 'bg-yellow-100 rounded-lg py-1' : ''}`}
+                >
                     {!mine && (
                         <div className="flex-shrink-0 mt-0.5">
                             <Avatar name={m.senderName || 'User'} size={28} />
                         </div>
                     )}
-                    <div className={`flex flex-col ${mine ? 'items-end' : 'items-start'} gap-0.5`}>
+                    <div className={`flex flex-col ${mine ? 'items-end' : 'items-start'} gap-1`}>
                         {!mine && (
                             <span className="text-xs text-gray-600 px-1.5 font-medium">
                                 {m.senderName || 'User'}
                             </span>
                         )}
-                        <div className={`max-w-sm px-3 py-1.5 rounded-lg ${style} ${mine ? 'rounded-br-none' : 'rounded-bl-none'}`}>
+                        <div 
+                            className={`max-w-sm px-3 py-1.5 rounded-lg ${style} ${mine ? 'rounded-br-none' : 'rounded-bl-none'} group relative`}
+                            onContextMenu={(e) => {
+                                e.preventDefault();
+                                setSelectedMessage(m);
+                            }}
+                        >
                             {/* File/Image Display */}
                             {hasFile && (
                                 <div className="mb-2">
@@ -331,14 +520,56 @@ const ChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage }) => {
                                 <div className="text-sm whitespace-pre-wrap break-words">{m.content}</div>
                             )}
                             
+                            {/* Link Preview */}
+                            <LinkPreview message={m} />
+                            
                             {/* Timestamp and Status */}
                             <div className={`flex items-center justify-end gap-0.5 mt-0.5 text-xs ${mine ? 'text-green-100' : 'text-gray-400'}`}>
                                 <span title={new Date(m.sentAt).toLocaleString()}>
-                                    {getRelativeTime(m.sentAt)}
+                                    {formatMessageTime(m.sentAt)}
                                 </span>
-                                {getStatusIcon()}
+                                {mine && (
+                                    <span className={getStatusColor(m.status || 'SENT')}>
+                                        {getStatusIcon(m.status || 'SENT')}
+                                    </span>
+                                )}
                             </div>
                         </div>
+
+                        {/* Emoji Reactions */}
+                        <MessageReactions
+                          messageId={m.id}
+                          reactions={messageReactions[m.id] || {}}
+                          onAddReaction={handleAddReaction}
+                          onRemoveReaction={handleRemoveReaction}
+                          currentUser={normalizedSelfIdentifier}
+                        />
+
+                        {/* Message Options Menu */}
+                        {selectedMessage?.id === m.id && (
+                          <div className="relative">
+                            <MessageOptions
+                              message={m}
+                              currentUser={normalizedSelfIdentifier}
+                              onReply={() => {
+                                setQuotedMessage(m);
+                                setSelectedMessage(null);
+                              }}
+                              onForward={() => {
+                                alert('Forward feature coming soon!');
+                                setSelectedMessage(null);
+                              }}
+                              onDelete={() => {
+                                handleDeleteMessage(m.id);
+                              }}
+                              onCopy={() => {
+                                handleCopyMessage(m.content);
+                                setSelectedMessage(null);
+                              }}
+                              onClose={() => setSelectedMessage(null)}
+                            />
+                          </div>
+                        )}
                     </div>
                 </div>
             </>
@@ -392,10 +623,33 @@ const ChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage }) => {
 
     return (
         <div className="h-full flex flex-col bg-gradient-to-b from-gray-50 to-white">
-            {/* Header with Connection Status */}
-            <div className="border-b bg-white px-4 py-3 flex items-center justify-end">
+            {/* Header with Connection Status and Search */}
+            <div className="border-b bg-white px-4 py-3 flex items-center justify-between">
+                <button
+                  onClick={() => setShowSearch(!showSearch)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition-all"
+                  title="Search messages"
+                >
+                  🔍
+                </button>
                 <ConnectionStatus isConnected={isConnected} showLabel={true} />
             </div>
+
+            {/* Search Bar */}
+            {showSearch && (
+              <ChatSearch
+                messages={messages}
+                onSearchResults={setSearchResults}
+                onClose={() => setShowSearch(false)}
+                onSelectResult={(message) => {
+                  setHighlightedMessageId(message.id);
+                  // Scroll to message after a brief delay to ensure DOM is ready
+                  setTimeout(() => {
+                    messageRefs.current[message.id]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  }, 100);
+                }}
+              />
+            )}
 
             <div className="flex-1 overflow-auto p-4">
                 {messages.length === 0 ? (
@@ -449,6 +703,12 @@ const ChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage }) => {
                 )}
             </div>
             <div className="border-t border-gray-200 bg-white px-3 py-2.5">
+                {/* Quoted Message */}
+                <QuotedMessage 
+                  quotedMessage={quotedMessage}
+                  onRemove={() => setQuotedMessage(null)}
+                />
+
                 {/* Upload Progress Bar */}
                 {uploading && uploadProgress > 0 && (
                     <div className="mb-2">

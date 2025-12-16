@@ -10,5 +10,6 @@ import com.interacthub.chat.model.GroupMember;
 @Repository
 public interface GroupMemberRepository extends JpaRepository<GroupMember, Long> {
     List<GroupMember> findByGroupId(String groupId);
+    List<GroupMember> findByMemberName(String memberName);
     void deleteByGroupIdAndMemberName(String groupId, String memberName);
 }

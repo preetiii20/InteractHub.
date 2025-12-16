@@ -303,4 +303,15 @@ public class AdminController {
     public ResponseEntity<Map<String, Object>> getSystemMonitoring() {
         return ResponseEntity.ok(adminService.getSystemMonitoring());
     }
+    
+    // Manual sync endpoint to fix missing employee sync
+    @PostMapping("/users/sync/{email}")
+    public ResponseEntity<?> manualSyncUser(@PathVariable String email) {
+        try {
+            Map<String, String> result = adminService.manualSyncUser(email);
+            return ResponseEntity.ok(result);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
 }

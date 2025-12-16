@@ -72,9 +72,23 @@ const HRLayout = () => {
             </aside>
 
             <main className="flex-1 flex flex-col h-full overflow-hidden">
-                <header className="h-16 flex-shrink-0 bg-white border-b px-6 flex items-center justify-between">
-                    <div className="text-slate-700">Welcome, {meDisplayName}</div>
-                    <div className="text-xs text-slate-500">Live notifications enabled</div>
+                <header className="h-16 flex-shrink-0 bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 border-b border-indigo-700 px-8 flex items-center justify-between shadow-lg">
+                    <div className="flex items-center gap-4 h-full">
+                        <div className="text-2xl font-bold text-white">🚀 Interacthub</div>
+                        <div className="h-6 w-0.5 bg-white opacity-40"></div>
+                        <div className="text-white text-xs font-semibold opacity-90 tracking-wide">HR PORTAL</div>
+                    </div>
+                    <div className="flex items-center gap-6 h-full">
+                        <div className="flex items-center gap-3 bg-white bg-opacity-15 px-4 py-2 rounded-full hover:bg-opacity-25 transition">
+                            <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center text-indigo-600 font-bold text-sm">
+                                {meDisplayName.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="text-white text-sm font-medium">{meDisplayName}</div>
+                        </div>
+                        <button onClick={() => { authHelpers.logout?.(); navigate('/login'); }} className="text-white hover:bg-white hover:bg-opacity-20 px-4 py-1.5 rounded-lg text-xs font-medium transition">
+                            Logout
+                        </button>
+                    </div>
                 </header>
                 <div className="flex-1 overflow-y-auto p-6 scroll-smooth">
                     <Outlet />

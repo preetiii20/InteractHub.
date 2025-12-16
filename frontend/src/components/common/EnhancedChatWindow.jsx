@@ -22,10 +22,12 @@ const EnhancedChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage 
     const typingTimeoutRef = useRef(null);
     const heartbeatIntervalRef = useRef(null);
 
-    const isGroup = channelId?.startsWith('GROUP_');
-    const isDm = channelId?.startsWith('DM_');
-    const dmRoom = isDm ? channelId.replace(/^DM_/, '') : '';
-    const groupId = isGroup ? channelId.replace(/^GROUP_/, '') : '';
+    // Support both prefixed IDs (GROUP_x) and raw UUIDs (no prefix)
+    const normalizedChannelId = channelId || '';
+    const isDm = normalizedChannelId.startsWith('DM_');
+    const isGroup = normalizedChannelId.startsWith('GROUP_') || (!isDm && !!normalizedChannelId);
+    const dmRoom = isDm ? normalizedChannelId.replace(/^DM_/, '') : '';
+    const groupId = isGroup ? normalizedChannelId.replace(/^GROUP_/, '') : '';
     
     const normalizedSelfIdentifier = (selfIdentifier || selfName || '').trim().toLowerCase();
     const senderDisplayName = selfName || 'User';

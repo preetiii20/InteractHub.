@@ -4,6 +4,8 @@ import { motion } from 'framer-motion';
 import ToastProvider from './components/common/ToastProvider';
 import AnnouncementPollNotificationHub from './components/common/AnnouncementPollNotificationHub';
 import GlobalNotificationDisplay from './components/common/GlobalNotificationDisplay';
+import GlobalNotificationCenter from './components/common/GlobalNotificationCenter';
+import { NotificationProvider } from './context/NotificationContext';
 import persistentWebSocketService from './services/PersistentWebSocketService';
 import { authHelpers } from './config/auth';
 
@@ -73,12 +75,15 @@ const App = () => {
       try {
         const userEmail = authHelpers.getUserEmail();
         const userName = authHelpers.getUserName();
-        const userIdentifier = userEmail || userName;
+        // Normalize to lowercase to match backend format
+        const userIdentifier = (userEmail || userName)?.toLowerCase();
 
         if (userIdentifier) {
           console.log('🚀 Initializing persistent WebSocket for:', userIdentifier);
           await persistentWebSocketService.connect(userIdentifier);
           console.log('✅ Persistent WebSocket initialized globally');
+        } else {
+          console.warn('⚠️ No user identifier found for WebSocket connection');
         }
       } catch (error) {
         console.error('❌ Error initializing WebSocket:', error);
@@ -101,13 +106,15 @@ const App = () => {
   };
 
   return (
-    <ToastProvider>
-      <GlobalNotificationDisplay />
-      <AnnouncementPollNotificationHub 
-        onAnnouncementReceived={handleAnnouncementReceived}
-        onPollReceived={handlePollReceived}
-      />
-      <Router>
+    <NotificationProvider>
+      <ToastProvider>
+        <GlobalNotificationDisplay />
+        <GlobalNotificationCenter />
+        <AnnouncementPollNotificationHub 
+          onAnnouncementReceived={handleAnnouncementReceived}
+          onPollReceived={handlePollReceived}
+        />
+        <Router>
       <Routes>
         {/* Landing Page */}
         <Route path="/" element={<LandingPage />} />
@@ -177,7 +184,8 @@ const App = () => {
         <Route path="*" element={<div>404 Not Found</div>} />
         </Routes>
       </Router>
-    </ToastProvider>
+      </ToastProvider>
+    </NotificationProvider>
   );
 };
 

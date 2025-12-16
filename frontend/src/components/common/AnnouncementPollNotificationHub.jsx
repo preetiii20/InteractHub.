@@ -2,18 +2,18 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 import apiConfig from '../../config/api';
-import { authHelpers } from '../../config/auth';
 import NotificationService from '../../services/NotificationService';
+import globalNotificationService from '../../services/GlobalNotificationService';
 
 /**
  * AnnouncementPollNotificationHub
  * Handles real-time notifications for announcements and polls
- * Integrates with WebSocket for live updates
+ * Creates a dedicated WebSocket connection for announcements and polls
  */
 const AnnouncementPollNotificationHub = ({ onAnnouncementReceived, onPollReceived }) => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const userEmail = authHelpers.getUserEmail() || authHelpers.getUserName();
+  const [wsConnected, setWsConnected] = useState(false);
 
   // Add notification to toast list
   const addNotification = useCallback((notification) => {
@@ -58,6 +58,14 @@ const AnnouncementPollNotificationHub = ({ onAnnouncementReceived, onPollReceive
       content: announcement.content?.substring(0, 100),
       color: 'from-blue-500 to-blue-600',
     });
+
+    // Broadcast to global notification service
+    globalNotificationService.broadcast({
+      type: 'announcement',
+      title: announcement.title || 'New Announcement',
+      message: announcement.content || '',
+      details: announcement.author || 'System'
+    });
   }, [addNotification, onAnnouncementReceived]);
 
   // Handle poll received
@@ -81,70 +89,77 @@ const AnnouncementPollNotificationHub = ({ onAnnouncementReceived, onPollReceive
       content: poll.question?.substring(0, 100),
       color: 'from-emerald-500 to-emerald-600',
     });
+
+    // Broadcast to global notification service
+    globalNotificationService.broadcast({
+      type: 'poll',
+      title: 'New Poll',
+      message: poll.question || '',
+      details: poll.createdBy || 'System'
+    });
   }, [addNotification, onPollReceived]);
 
-  // Subscribe to announcements and polls via WebSocket
+  // Fallback: Poll for announcements and polls via REST API
   useEffect(() => {
-    const socket = new SockJS(apiConfig.websocketUrl);
-    const client = new Client({
-      webSocketFactory: () => socket,
-      reconnectDelay: 3000,
-    });
+    console.log('📡 AnnouncementPollNotificationHub starting polling for announcements and polls');
+    
+    const lastAnnouncementId = { current: 0 };
+    const lastPollId = { current: 0 };
 
-    client.onConnect = () => {
-      console.log('🔌 Announcement/Poll WebSocket connected');
-
-      // Subscribe to announcements for all users
-      client.subscribe('/topic/announcements', (msg) => {
-        try {
-          const announcement = JSON.parse(msg.body || '{}');
-          handleAnnouncementReceived(announcement);
-        } catch (e) {
-          console.error('Error parsing announcement:', e);
+    const pollAnnouncements = async () => {
+      try {
+        const response = await fetch(`${apiConfig.apiUrl}/api/admin/company-updates/announcements/all`);
+        if (response.ok) {
+          const announcements = await response.json();
+          console.log('📢 Fetched announcements:', announcements);
+          
+          // Check for new announcements
+          announcements.forEach(announcement => {
+            if (announcement.id > lastAnnouncementId.current) {
+              console.log('📢 New announcement detected:', announcement);
+              handleAnnouncementReceived(announcement);
+              lastAnnouncementId.current = announcement.id;
+            }
+          });
         }
-      });
-
-      // Subscribe to announcements for specific user
-      client.subscribe(`/user/${userEmail}/queue/announcements`, (msg) => {
-        try {
-          const announcement = JSON.parse(msg.body || '{}');
-          handleAnnouncementReceived(announcement);
-        } catch (e) {
-          console.error('Error parsing user announcement:', e);
-        }
-      });
-
-      // Subscribe to polls for all users
-      client.subscribe('/topic/polls', (msg) => {
-        try {
-          const poll = JSON.parse(msg.body || '{}');
-          handlePollReceived(poll);
-        } catch (e) {
-          console.error('Error parsing poll:', e);
-        }
-      });
-
-      // Subscribe to polls for specific user
-      client.subscribe(`/user/${userEmail}/queue/polls`, (msg) => {
-        try {
-          const poll = JSON.parse(msg.body || '{}');
-          handlePollReceived(poll);
-        } catch (e) {
-          console.error('Error parsing user poll:', e);
-        }
-      });
+      } catch (error) {
+        console.error('❌ Error fetching announcements:', error);
+      }
     };
 
-    client.onError = (error) => {
-      console.error('WebSocket error:', error);
+    const pollPolls = async () => {
+      try {
+        const response = await fetch(`${apiConfig.apiUrl}/api/admin/company-updates/polls/active`);
+        if (response.ok) {
+          const polls = await response.json();
+          console.log('📊 Fetched polls:', polls);
+          
+          // Check for new polls
+          polls.forEach(poll => {
+            if (poll.id > lastPollId.current) {
+              console.log('📊 New poll detected:', poll);
+              handlePollReceived(poll);
+              lastPollId.current = poll.id;
+            }
+          });
+        }
+      } catch (error) {
+        console.error('❌ Error fetching polls:', error);
+      }
     };
 
-    client.activate();
+    // Poll every 5 seconds
+    const interval = setInterval(() => {
+      pollAnnouncements();
+      pollPolls();
+    }, 5000);
 
-    return () => {
-      client.deactivate();
-    };
-  }, [userEmail, handleAnnouncementReceived, handlePollReceived]);
+    // Initial poll
+    pollAnnouncements();
+    pollPolls();
+
+    return () => clearInterval(interval);
+  }, [handleAnnouncementReceived, handlePollReceived]);
 
   // Update browser tab title with unread count
   useEffect(() => {

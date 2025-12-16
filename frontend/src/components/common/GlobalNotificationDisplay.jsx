@@ -137,7 +137,11 @@ const GlobalNotificationDisplay = () => {
             if (channelId && getChatRoute) {
               const route = getChatRoute(channelId);
               console.log('🔔 Navigating to chat:', route, 'channelId:', channelId);
-              // Use window.location.href for full page navigation
+
+              // Dispatch in-app event so an already-loaded chat page can react without full reload
+              window.dispatchEvent(new CustomEvent('chat:open', { detail: { channelId } }));
+
+              // Fallback navigation (full page) to ensure route loads when not already on chat page
               window.location.href = route;
             } else {
               console.warn('🔔 Cannot navigate: channelId or getChatRoute missing', { channelId, hasGetChatRoute: !!getChatRoute });
@@ -158,7 +162,7 @@ const GlobalNotificationDisplay = () => {
       console.log('🔔 Processing group_message notification, from:', fromEmail, 'selfIdentifier:', selfIdentifier);
       if (fromEmail && selfIdentifier && fromEmail.toLowerCase() !== selfIdentifier.toLowerCase()) {
         const displayName = getDisplayName(fromEmail);
-        const channelId = groupId ? `GROUP_${groupId}` : null;
+        const channelId = groupId || null; // use raw groupId to match conversation keys
         
         console.log('🔔 Adding group_message notification, displayName:', displayName, 'channelId:', channelId);
         addNotification({
@@ -195,10 +199,16 @@ const GlobalNotificationDisplay = () => {
           message: `Added to group: ${payload.groupName}`,
           icon: '👥',
           color: 'bg-blue-500',
-          channelId: payload.groupId ? `GROUP_${payload.groupId}` : null,
+          channelId: payload.groupId || null, // use raw id so it matches stored conversations
           onClick: () => {
             if (payload.groupId && getChatRoute) {
-              window.location.href = getChatRoute(`GROUP_${payload.groupId}`);
+              const route = getChatRoute(payload.groupId);
+
+              // Dispatch in-app event so an already-loaded chat page can react without full reload
+              window.dispatchEvent(new CustomEvent('chat:open', { detail: { channelId: payload.groupId } }));
+
+              // Fallback navigation (full page) to ensure route loads when not already on chat page
+              window.location.href = route;
             }
           }
         });
@@ -231,17 +241,36 @@ const GlobalNotificationDisplay = () => {
 
     // Show notification for incoming calls
     if (payload.type === 'incoming_call') {
+      const fromEmail = payload.fromUser || '';
+      const displayName = getDisplayName(fromEmail);
+      const callType = (payload.callType || 'VIDEO').toUpperCase();
+      const callIcon = callType === 'VOICE' ? '📞' : '📹';
+      const callTypeText = callType === 'VOICE' ? 'Voice' : 'Video';
+      
       addNotification({
         id: `call-${payload.roomId}-${Date.now()}`,
         type: 'call',
-        title: 'Incoming Call',
-        message: `${payload.fromUser} is calling...`,
-        icon: '📞',
+        title: `Incoming ${callTypeText} Call`,
+        message: `${displayName} is calling...`,
+        icon: callIcon,
         color: 'bg-green-500',
         channelId: payload.roomId,
+        callData: {
+          fromUser: fromEmail,
+          callType: callType,
+          roomId: payload.roomId
+        },
         onClick: () => {
+          // Navigate to chat page and trigger call acceptance
           if (payload.roomId && getChatRoute) {
-            window.location.href = getChatRoute(payload.roomId);
+            const route = getChatRoute(payload.roomId);
+            // Store call data in sessionStorage so the chat page can pick it up
+            sessionStorage.setItem('pendingCall', JSON.stringify({
+              fromUser: fromEmail,
+              callType: callType,
+              roomId: payload.roomId
+            }));
+            window.location.href = route;
           }
         }
       });
@@ -338,45 +367,8 @@ const GlobalNotificationDisplay = () => {
     }
   }, [notifications]);
 
-  // Test function to verify component is working
-  const testNotification = () => {
-    console.log('🔔 Test button clicked, adding test notification');
-    addNotification({
-      id: `test-${Date.now()}`,
-      type: 'test',
-      title: 'Test Notification',
-      message: 'If you see this, the component is working!',
-      icon: '✅',
-      color: 'bg-blue-500'
-    });
-    console.log('🔔 Test notification added');
-  };
-
   return (
     <>
-      {/* Test button - remove after testing */}
-      {process.env.NODE_ENV === 'development' && (
-        <button
-          onClick={testNotification}
-          style={{
-            position: 'fixed',
-            bottom: '20px',
-            right: '20px',
-            zIndex: 100001,
-            padding: '10px 20px',
-            backgroundColor: '#3b82f6',
-            color: 'white',
-            border: 'none',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            fontWeight: 'bold'
-          }}
-        >
-          Test Notification
-        </button>
-      )}
-      
       {/* Notification Container */}
       <div 
         id="global-notification-container"

@@ -173,4 +173,90 @@ public class ChatController {
             System.err.println("Error processing presence heartbeat: " + e.getMessage());
         }
     }
+
+    // Handle adding a reaction to a message
+    // Expected payload: { roomId, messageId, emoji, userId, isDm }
+    @MessageMapping("/reaction.add")
+    public void addReaction(@Payload String reactionPayload) {
+        System.out.println("📥 Received reaction.add payload: " + reactionPayload);
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            java.util.Map<String, Object> data = mapper.readValue(reactionPayload, java.util.Map.class);
+            
+            String roomId = (String) data.get("roomId");
+            String messageId = String.valueOf(data.get("messageId"));
+            String emoji = (String) data.get("emoji");
+            String userId = (String) data.get("userId");
+            Boolean isDm = (Boolean) data.getOrDefault("isDm", false);
+            
+            System.out.println("📊 Parsed reaction: roomId=" + roomId + ", messageId=" + messageId + ", emoji=" + emoji + ", userId=" + userId);
+            
+            if (roomId == null || messageId == null || emoji == null || userId == null) {
+                System.err.println("❌ Invalid reaction payload - missing required fields");
+                return;
+            }
+            
+            // Prepare reaction event
+            java.util.Map<String, Object> reactionEvent = new java.util.HashMap<>();
+            reactionEvent.put("type", "add");
+            reactionEvent.put("messageId", messageId);
+            reactionEvent.put("emoji", emoji);
+            reactionEvent.put("userId", userId);
+            reactionEvent.put("timestamp", System.currentTimeMillis());
+            
+            // Broadcast to appropriate topic
+            String topic = "/topic/reactions." + roomId;
+            String eventJson = mapper.writeValueAsString(reactionEvent);
+            System.out.println("📤 Broadcasting to " + topic + ": " + eventJson);
+            messagingTemplate.convertAndSend(topic, eventJson);
+            
+            System.out.println("✅ Reaction added: " + emoji + " by " + userId + " on message " + messageId);
+        } catch (Exception e) {
+            System.err.println("❌ Error processing reaction.add: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    // Handle removing a reaction from a message
+    // Expected payload: { roomId, messageId, emoji, userId, isDm }
+    @MessageMapping("/reaction.remove")
+    public void removeReaction(@Payload String reactionPayload) {
+        System.out.println("📥 Received reaction.remove payload: " + reactionPayload);
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            java.util.Map<String, Object> data = mapper.readValue(reactionPayload, java.util.Map.class);
+            
+            String roomId = (String) data.get("roomId");
+            String messageId = String.valueOf(data.get("messageId"));
+            String emoji = (String) data.get("emoji");
+            String userId = (String) data.get("userId");
+            Boolean isDm = (Boolean) data.getOrDefault("isDm", false);
+            
+            System.out.println("📊 Parsed reaction: roomId=" + roomId + ", messageId=" + messageId + ", emoji=" + emoji + ", userId=" + userId);
+            
+            if (roomId == null || messageId == null || emoji == null || userId == null) {
+                System.err.println("❌ Invalid reaction payload - missing required fields");
+                return;
+            }
+            
+            // Prepare reaction event
+            java.util.Map<String, Object> reactionEvent = new java.util.HashMap<>();
+            reactionEvent.put("type", "remove");
+            reactionEvent.put("messageId", messageId);
+            reactionEvent.put("emoji", emoji);
+            reactionEvent.put("userId", userId);
+            reactionEvent.put("timestamp", System.currentTimeMillis());
+            
+            // Broadcast to appropriate topic
+            String topic = "/topic/reactions." + roomId;
+            String eventJson = mapper.writeValueAsString(reactionEvent);
+            System.out.println("📤 Broadcasting to " + topic + ": " + eventJson);
+            messagingTemplate.convertAndSend(topic, eventJson);
+            
+            System.out.println("✅ Reaction removed: " + emoji + " by " + userId + " on message " + messageId);
+        } catch (Exception e) {
+            System.err.println("❌ Error processing reaction.remove: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
 }

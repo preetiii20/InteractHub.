@@ -26,6 +26,7 @@ com\interacthub\chat\repository\ChatGroupRepository.class
 com\interacthub\chat\controller\CallController.class
 com\interacthub\chat\controller\PresenceController.class
 com\interacthub\chat\config\WebSocketConfig.class
+com\interacthub\chat\controller\ZegoController.class
 com\interacthub\chat\model\AnnouncementInteraction.class
 com\interacthub\chat\model\ChatMessage$MessageType.class
 com\interacthub\chat\repository\InteractionRepository.class
