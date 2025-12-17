@@ -344,13 +344,14 @@ public class GroupChatController {
     public Map<String,Object> createGroup(@RequestBody Map<String,Object> req) {
         String name = String.valueOf(req.getOrDefault("name","Group"));
         String createdByName = String.valueOf(req.getOrDefault("createdByName","User"));
+        String createdByEmail = String.valueOf(req.getOrDefault("createdByEmail", createdByName)); // Use email if provided
         @SuppressWarnings("unchecked")
         List<String> members = (List<String>) req.getOrDefault("members", new ArrayList<>());
 
         ChatGroup g = new ChatGroup();
         g.setGroupId(UUID.randomUUID().toString());
         g.setName(name);
-        g.setCreatedByName(createdByName);
+        g.setCreatedByName(createdByEmail); // Store email instead of name for easier comparison
         ChatGroup saved = groupRepo.save(g);
 
         // Prepare notification payload
@@ -444,6 +445,30 @@ public class GroupChatController {
         }
     }
     
+    @GetMapping("/{groupId}")
+    public ResponseEntity<Map<String, Object>> getGroupDetails(@PathVariable String groupId) {
+        try {
+            Optional<ChatGroup> groupOpt = groupRepo.findByGroupId(groupId);
+            if (!groupOpt.isPresent()) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            ChatGroup group = groupOpt.get();
+            List<GroupMember> members = memberRepo.findByGroupId(groupId);
+            
+            return ResponseEntity.ok(Map.of(
+                "groupId", group.getGroupId(),
+                "name", group.getName(),
+                "createdBy", group.getCreatedByName(),
+                "createdAt", group.getCreatedAt().toString(),
+                "members", members.stream().map(GroupMember::getMemberName).collect(java.util.stream.Collectors.toList())
+            ));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
+    }
+
     @GetMapping("/{groupId}/members")
     public List<GroupMember> members(@PathVariable String groupId) {
         return memberRepo.findByGroupId(groupId);
@@ -573,13 +598,32 @@ public class GroupChatController {
                 return ResponseEntity.notFound().build();
             }
             
-            // Verify creator
-            if (!group.getCreatedByName().equalsIgnoreCase(creatorEmail)) {
-                return ResponseEntity.status(403).body(Map.of("error", "Only group creator can delete the group"));
-            }
-            
-            // Get all members
+            // Get all members first
             List<GroupMember> members = memberRepo.findByGroupId(groupId);
+            
+            // Debug logging
+            System.out.println("🔍 Delete group check:");
+            System.out.println("   - groupId: " + groupId);
+            System.out.println("   - creatorEmail from request: " + creatorEmail);
+            System.out.println("   - createdByName from DB: " + group.getCreatedByName());
+            System.out.println("   - members count: " + members.size());
+            
+            // Verify creator - compare emails (case-insensitive)
+            boolean isCreator = group.getCreatedByName().equalsIgnoreCase(creatorEmail);
+            System.out.println("   - isCreator (email match): " + isCreator);
+            
+            // Fallback: if not creator by email, check if user is a member (for old groups where createdByName might be display name)
+            if (!isCreator) {
+                boolean isMember = members.stream()
+                    .anyMatch(m -> m.getMemberName().equalsIgnoreCase(creatorEmail));
+                System.out.println("   - isMember (fallback): " + isMember);
+                
+                if (!isMember) {
+                    System.out.println("❌ Authorization failed - not the creator or member");
+                    return ResponseEntity.status(403).body(Map.of("error", "Only group creator can delete the group"));
+                }
+                System.out.println("✅ Using fallback authorization - user is a member");
+            }
             
             // Notify all members about group deletion
             for (GroupMember member : members) {
@@ -610,6 +654,70 @@ public class GroupChatController {
             
             System.out.println("✅ Group " + groupId + " deleted by " + creatorEmail);
             return ResponseEntity.ok(Map.of("message", "Group deleted successfully"));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    // Add member to group
+    @PostMapping("/{groupId}/add-member")
+    public ResponseEntity<?> addMember(
+            @PathVariable String groupId,
+            @RequestBody Map<String, Object> payload) {
+        
+        String memberEmail = (String) payload.get("memberEmail");
+        String addedByEmail = (String) payload.get("addedByEmail");
+        
+        if (memberEmail == null || memberEmail.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "memberEmail is required"));
+        }
+        
+        try {
+            // Get group
+            ChatGroup group = groupRepo.findByGroupId(groupId).orElse(null);
+            if (group == null) {
+                return ResponseEntity.notFound().build();
+            }
+            
+            // Check if member already exists
+            List<GroupMember> existingMembers = memberRepo.findByGroupId(groupId);
+            boolean alreadyMember = existingMembers.stream()
+                .anyMatch(m -> m.getMemberName().equalsIgnoreCase(memberEmail));
+            
+            if (alreadyMember) {
+                return ResponseEntity.badRequest().body(Map.of("error", "User is already a member of this group"));
+            }
+            
+            // Add new member
+            GroupMember newMember = new GroupMember();
+            newMember.setGroupId(groupId);
+            newMember.setMemberName(memberEmail.trim());
+            memberRepo.save(newMember);
+            
+            // Notify the new member
+            String addedByName = addedByEmail != null ? addedByEmail : "Admin";
+            broker.convertAndSend("/user/" + memberEmail.toLowerCase() + "/queue/notify", Map.of(
+                "type", "ADDED_TO_GROUP",
+                "groupId", groupId,
+                "groupName", group.getName(),
+                "addedBy", addedByName,
+                "message", addedByName + " added you to " + group.getName()
+            ));
+            
+            // Broadcast member added event to group
+            broker.convertAndSend("/topic/group." + groupId, Map.of(
+                "type", "MEMBER_ADDED",
+                "memberEmail", memberEmail,
+                "addedBy", addedByName,
+                "message", addedByName + " added " + memberEmail + " to the group"
+            ));
+            
+            System.out.println("✅ Member " + memberEmail + " added to group " + groupId + " by " + addedByName);
+            return ResponseEntity.ok(Map.of(
+                "message", "Member added successfully",
+                "memberEmail", memberEmail
+            ));
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));

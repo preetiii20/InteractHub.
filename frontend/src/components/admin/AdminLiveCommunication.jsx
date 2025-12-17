@@ -129,19 +129,23 @@ const AdminLiveCommunication = () => {
     };
 
     return (
-        <div className="p-6">
-            <div className="bg-white rounded-lg shadow overflow-hidden">
-                <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-5">
-                    <h1 className="text-xl font-semibold">Live Communication</h1>
-                    <p className="text-indigo-100 text-sm">1:1 chat {channelId ? `— ${channelId}` : ''}</p>
-                </div>
+        <div className="flex flex-col h-full gap-6">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-indigo-600 via-blue-600 to-purple-600 text-white px-8 py-6 rounded-xl shadow-lg">
+                <h1 className="text-2xl font-bold">Live Communication Hub</h1>
+                <p className="text-indigo-100 text-sm mt-1">Real-time collaboration and messaging</p>
+            </div>
 
-                <div className="p-5 space-y-4">
-                    <div className="max-w-md">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Select Recipient (Email/ID)</label>
+            {/* Main Content */}
+            <div className="flex-1 overflow-hidden flex gap-6">
+                {/* Left Sidebar - Recipient Selection & Controls */}
+                <div className="w-80 flex flex-col gap-4 flex-shrink-0">
+                    {/* Recipient Selection */}
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-800 mb-2">Select Recipient</label>
                         <RecipientSelectorComponent 
-                            names={directory} // Contains emails/IDs
-                            displayNames={nameMap} // Map for rendering full names
+                            names={directory}
+                            displayNames={nameMap}
                             value={recipientIdentifier} 
                             onChange={setRecipientIdentifier} 
                         />
@@ -149,69 +153,79 @@ const AdminLiveCommunication = () => {
 
                     {/* Call Controls */}
                     {recipientIdentifier && (
-                        <div className="flex gap-3 p-4 bg-gray-50 rounded-lg">
-                            <div className="flex-1">
-                                <h3 className="text-sm font-medium text-gray-700 mb-2">Voice & Video Calls</h3>
-                                <div className="flex gap-2">
-                                    {callStatus === 'idle' && (
-                                        <>
-                                            <button
-                                                onClick={() => startCall('voice')}
-                                                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                                            >
-                                                📞 Voice Call
-                                            </button>
-                                            <button
-                                                onClick={() => startCall('video')}
-                                                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                                            >
-                                                📹 Video Call
-                                            </button>
-                                        </>
-                                    )}
-                                    
-                                    {callStatus === 'calling' && (
-                                        <div className="flex items-center gap-2 px-4 py-2 bg-yellow-100 text-yellow-800 rounded-lg">
-                                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-600"></div>
-                                            Calling {nameMap[recipientIdentifier] || recipientIdentifier}...
-                                        </div>
-                                    )}
-                                    
-                                    {callStatus === 'in_call' && (
+                        <div>
+                            <h3 className="text-sm font-semibold text-gray-800 mb-3">Voice & Video Calls</h3>
+                            <div className="space-y-2">
+                                {callStatus === 'idle' && (
+                                    <>
                                         <button
-                                            onClick={endCall}
-                                            className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                                            onClick={() => startCall('voice')}
+                                            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm"
                                         >
-                                            📞 End Call
+                                            📞 Voice Call
                                         </button>
-                                    )}
-                                    
-                                    {callStatus === 'ended' && (
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-gray-600">Call ended</span>
-                                            <button
-                                                onClick={resetCall}
-                                                className="px-3 py-1 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors"
-                                            >
-                                                Reset
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
+                                        <button
+                                            onClick={() => startCall('video')}
+                                            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm"
+                                        >
+                                            📹 Video Call
+                                        </button>
+                                    </>
+                                )}
+                                
+                                {callStatus === 'calling' && (
+                                    <div className="flex items-center justify-center gap-2 px-4 py-2 bg-yellow-100 text-yellow-800 rounded-lg border border-yellow-300 text-sm">
+                                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-yellow-600"></div>
+                                        <span className="font-medium">Calling...</span>
+                                    </div>
+                                )}
+                                
+                                {callStatus === 'in_call' && (
+                                    <button
+                                        onClick={endCall}
+                                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium text-sm"
+                                    >
+                                        📞 End Call
+                                    </button>
+                                )}
+                                
+                                {callStatus === 'ended' && (
+                                    <div className="flex flex-col gap-2">
+                                        <div className="text-center text-gray-600 text-sm font-medium py-1">Call ended</div>
+                                        <button
+                                            onClick={resetCall}
+                                            className="w-full px-3 py-1 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
+                                        >
+                                            Start New Call
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
 
-                    {channelId ? (
-                        <div className="h-[28rem]">
-                            <ChatWindow 
-                                channelId={channelId} 
-                                selfName={currentUserName} // Display Name for UI
-                                selfIdentifier={selfIdentifier} // Email for DM logic
-                            />
+                    {!recipientIdentifier && (
+                        <div className="text-sm text-gray-600 py-4 text-center">
+                            <p className="font-medium">Select a recipient to begin</p>
                         </div>
+                    )}
+                </div>
+
+                {/* Right Content - Chat Window */}
+                <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+                    {channelId ? (
+                        <ChatWindow 
+                            channelId={channelId} 
+                            selfName={currentUserName}
+                            selfIdentifier={selfIdentifier}
+                        />
                     ) : (
-                        <div className="text-sm text-gray-500">Pick a recipient to start.</div>
+                        <div className="flex items-center justify-center h-full">
+                            <div className="text-center">
+                                <div className="text-6xl mb-4">💬</div>
+                                <p className="text-gray-500 font-medium">Select a recipient to start chatting</p>
+                            </div>
+                        </div>
                     )}
                 </div>
             </div>
@@ -222,12 +236,12 @@ const AdminLiveCommunication = () => {
 // --- Custom RecipientSelectorComponent definition (REQUIRED to be here or correctly imported) ---
 const RecipientSelectorComponent = ({ names = [], displayNames = {}, value, onChange }) => {
     return (
-        <select className="w-full border rounded px-2 py-2"
+        <select 
+            className="w-full border-2 border-indigo-200 rounded-lg px-4 py-3 text-gray-700 font-medium focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all bg-white hover:border-indigo-300"
             value={value || ''}
             onChange={e => onChange(e.target.value)}>
             <option value="">Select a person</option>
             {names.filter(Boolean).map(n => (
-                // Display the name/email, but use the email (n) as the value
                 <option key={n} value={n}>
                     {displayNames[n] || n} ({n})
                 </option>

@@ -254,40 +254,6 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import apiClient from '../../services/apiClient';
 
-// --- Helper Component for professional pagination buttons ---
-const PaginationButton = ({ onClick, disabled, text, isActive, isMobile, isLast = false }) => {
-    const baseClasses = "relative inline-flex items-center px-4 py-2 border text-sm font-medium transition duration-150 ease-in-out";
-    
-    // Teal Accent Classes
-    const activeClasses = "z-10 bg-teal-500 border-teal-500 text-white hover:bg-teal-600"; // Primary accent
-    const defaultClasses = "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"; 
-    const disabledClasses = "opacity-50 cursor-not-allowed";
-
-    let combinedClasses = isActive ? activeClasses : defaultClasses;
-
-    if (disabled) {
-        combinedClasses += ` ${disabledClasses}`;
-    }
-
-    if (!isMobile) {
-        if (text === "Previous") {
-            combinedClasses += " rounded-l-md";
-        } else if (text === "Next" || isLast) {
-            combinedClasses += " rounded-r-md";
-        }
-    }
-    
-    return (
-        <button
-            onClick={onClick}
-            disabled={disabled}
-            className={`${baseClasses} ${combinedClasses} ${isMobile ? 'ml-3 w-1/2 justify-center' : ''}`}
-        >
-            {text}
-        </button>
-    );
-};
-
 // --- Main Audit Logs Component ---
 const AuditLogs = () => {
     // --- FUNCTIONALITY: UNCHANGED ---
@@ -367,177 +333,142 @@ const AuditLogs = () => {
 
     return (
         <motion.div 
-            className="p-8 bg-gray-100 min-h-screen text-gray-900" 
+            className="space-y-6" 
             initial={{ opacity: 0 }} 
             animate={{ opacity: 1 }}
             transition={{ duration: 0.5 }}
         >
-            <div className="max-w-full mx-auto">
-                {/* --- Main Dashboard Card Container --- */}
-                <div className="bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden">
-                    
-                    {/* --- Teal Accent Header Bar (Perfectly matching the desired style) --- */}
-                    <div className="flex justify-between items-center bg-slate-700 text-white p-4"> {/* Reduced padding for a tighter bar */}
-                        <h1 className="text-xl font-extrabold tracking-wide px-2"> {/* Added left padding for text alignment */}
-                            <i className="fas fa-history mr-3"></i> SYSTEM AUDIT LOGS
-                        </h1>
-                        <div className="text-sm font-medium bg-slate-800 px-3 py-1 rounded-full border border-slate-500 mr-2"> {/* Added right margin for spacing */}
-                            Total Entries: {totalElements}
-                        </div>
-                    </div>
+            {/* Header */}
+            <div className="flex justify-between items-center">
+                <div>
+                    <h2 className="text-3xl font-bold text-gray-900">Audit Logs</h2>
+                    <p className="text-sm text-gray-500 mt-1">System activity and user actions tracking</p>
+                </div>
+                <div className="px-4 py-2 bg-white rounded-lg border border-gray-200 shadow-sm">
+                    <p className="text-sm font-medium text-gray-700">
+                        Total: <span className="font-bold text-gray-900">{totalElements}</span>
+                    </p>
+                </div>
+            </div>
 
-                    {/* --- Content Area within the Card --- */}
-                    <div className="p-6">
-                        
-                        {/* --- Audit Logs Table --- */}
-                        <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-gray-200">
-                                <thead className="bg-white sticky top-0 z-10"> {/* Changed to white BG for cleaner look */}
-                                    <tr>
-                                        {/* Increased font color and weight for better contrast on white background */}
-                                        <th className="px-6 py-4 text-left text-xs font-extrabold text-gray-700 uppercase tracking-widest">USER</th>
-                                        <th className="px-6 py-4 text-left text-xs font-extrabold text-gray-700 uppercase tracking-widest">ROLE</th>
-                                        <th className="px-6 py-4 text-left text-xs font-extrabold text-gray-700 uppercase tracking-widest">ACTION</th>
-                                        <th className="px-6 py-4 text-left text-xs font-extrabold text-gray-700 uppercase tracking-widest">ENDPOINT</th>
-                                        <th className="px-6 py-4 text-left text-xs font-extrabold text-gray-700 uppercase tracking-widest">METHOD</th>
-                                        <th className="px-6 py-4 text-left text-xs font-extrabold text-gray-700 uppercase tracking-widest">TIMESTAMP</th>
-                                        <th className="px-6 py-4 text-left text-xs font-extrabold text-gray-700 uppercase tracking-widest">IP ADDRESS</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-200"> 
-                                    {auditLogs.map((log, index) => (
-                                        <motion.tr
-                                            key={log.id}
-                                            initial={{ opacity: 0, y: 10 }}
-                                            animate={{ opacity: 1, y: 0 }}
-                                            transition={{ delay: index * 0.03, duration: 0.3 }}
-                                            className="hover:bg-teal-50 transition duration-150 ease-in-out" 
-                                        >
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                                {log.username || <span className="text-gray-400 italic">System</span>}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                                <span className={getRoleColor(log.role)}>
-                                                    {log.role ? log.role.replace('ROLE_', '') : <span className="text-gray-400 italic">—</span>}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                                <span className={`inline-flex items-center px-3 py-1 rounded-md text-xs font-bold uppercase tracking-wider border ${getActionColor(log.action)}`}>
-                                                    {log.action || 'UNKNOWN'}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">
-                                                {log.endpoint || <span className="text-gray-400 italic">—</span>}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                                <span className={`inline-flex items-center px-3 py-1 rounded-md text-xs font-bold ${
-                                                    log.method === 'POST' ? 'bg-green-100 text-green-700' :
-                                                    log.method === 'PUT' ? 'bg-blue-100 text-blue-700' :
-                                                    log.method === 'DELETE' ? 'bg-red-100 text-red-700' :
-                                                    'bg-gray-200 text-gray-700'
-                                                }`}>
-                                                    {log.method || <span className="text-gray-500">—</span>}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                                {formatTimestamp(log.timestamp)}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">
-                                                {log.ipAddress || <span className="text-gray-400 italic">Local</span>}
-                                            </td>
-                                        </motion.tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-
-                        {/* --- Pagination --- */}
-                        {totalPages > 1 && (
-                            <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 mt-6 sm:px-6">
-                                
-                                {/* Mobile Pagination */}
-                                <div className="flex-1 flex justify-between sm:hidden">
-                                    <PaginationButton 
-                                        onClick={() => handlePageChange(currentPage - 1)}
-                                        disabled={currentPage === 0}
-                                        text="Previous"
-                                        isMobile={true}
-                                    />
-                                    <PaginationButton
-                                        onClick={() => handlePageChange(currentPage + 1)}
-                                        disabled={currentPage >= totalPages - 1}
-                                        text="Next"
-                                        isMobile={true}
-                                    />
-                                </div>
-                                
-                                {/* Desktop Pagination */}
-                                <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between w-full">
-                                    <div>
-                                        <p className="text-sm text-gray-700">
-                                            Showing{' '}
-                                            <span className="font-medium text-gray-900">{currentPage * pageSize + 1}</span>
-                                            {' '}to{' '}
-                                            <span className="font-medium text-gray-900">
-                                                {Math.min((currentPage + 1) * pageSize, totalElements)}
-                                            </span>
-                                            {' '}of{' '}
-                                            <span className="font-medium text-gray-900">{totalElements}</span>
-                                            {' '}entries
-                                        </p>
-                                    </div>
-                                    <div>
-                                        <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
-                                            <PaginationButton 
-                                                onClick={() => handlePageChange(currentPage - 1)}
-                                                disabled={currentPage === 0}
-                                                text="Previous"
-                                            />
-                                            
-                                            {/* Page numbers */}
-                                            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                                                const pageNum = Math.max(0, Math.min(totalPages - 5, currentPage - 2)) + i;
-                                                if (pageNum >= totalPages) return null;
-                                                
-                                                return (
-                                                    <PaginationButton
-                                                        key={pageNum}
-                                                        onClick={() => handlePageChange(pageNum)}
-                                                        isActive={pageNum === currentPage}
-                                                        text={pageNum + 1}
-                                                    />
-                                                );
-                                            })}
-                                            
-                                            <PaginationButton
-                                                onClick={() => handlePageChange(currentPage + 1)}
-                                                disabled={currentPage >= totalPages - 1}
-                                                text="Next"
-                                                isLast={true}
-                                            />
-                                        </nav>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
+            {/* Audit Logs Table */}
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50 sticky top-0 z-10">
+                            <tr>
+                                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide">User</th>
+                                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide">Role</th>
+                                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide">Action</th>
+                                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide">Endpoint</th>
+                                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide">Method</th>
+                                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide">Timestamp</th>
+                                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide">IP Address</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                            {auditLogs.map((log, index) => (
+                                <motion.tr
+                                    key={log.id}
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: index * 0.02 }}
+                                    className="hover:bg-gray-50 transition-colors"
+                                >
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                        {log.username || '—'}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                        <span className={getRoleColor(log.role)}>
+                                            {log.role ? log.role.replace('ROLE_', '') : '—'}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getActionColor(log.action)}`}>
+                                            {log.action || 'Unknown'}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono text-xs">
+                                        {log.endpoint || '—'}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded text-xs font-semibold ${
+                                            log.method === 'POST' ? 'bg-green-100 text-green-800' :
+                                            log.method === 'PUT' ? 'bg-blue-100 text-blue-800' :
+                                            log.method === 'DELETE' ? 'bg-red-100 text-red-800' :
+                                            log.method === 'GET' ? 'bg-gray-100 text-gray-800' :
+                                            'bg-gray-100 text-gray-700'
+                                        }`}>
+                                            {log.method || '—'}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        {formatTimestamp(log.timestamp)}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono text-xs">
+                                        {log.ipAddress || '—'}
+                                    </td>
+                                </motion.tr>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
 
-                {/* --- Enhanced Zero State/Empty Data Placeholder --- */}
-                {auditLogs.length === 0 && !loading && (
-                    <div className="text-center py-20 bg-white mt-8 rounded-xl shadow-lg border border-gray-200">
-                        <div className="text-teal-500 text-7xl mb-6 opacity-80">
-                            <i className="fas fa-search-location"></i>
+                {/* Pagination */}
+                {totalPages > 1 && (
+                    <div className="px-6 py-4 flex items-center justify-between border-t border-gray-200 bg-gray-50">
+                        <div className="text-sm text-gray-600">
+                            Showing <span className="font-medium text-gray-900">{currentPage * pageSize + 1}</span> to{' '}
+                            <span className="font-medium text-gray-900">{Math.min((currentPage + 1) * pageSize, totalElements)}</span> of{' '}
+                            <span className="font-medium text-gray-900">{totalElements}</span>
                         </div>
-                        <h3 className="text-xl font-bold text-gray-800 mb-2 tracking-wider">
-                            AWAITING SYSTEM ACTIVITY
-                        </h3>
-                        <p className="text-gray-500 max-w-sm mx-auto">
-                            There are currently no audit logs recorded. Logs will be automatically displayed here upon user interactions.
-                        </p>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => handlePageChange(currentPage - 1)}
+                                disabled={currentPage === 0}
+                                className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            >
+                                Previous
+                            </button>
+                            <div className="flex gap-1">
+                                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                                    const pageNum = Math.max(0, Math.min(totalPages - 5, currentPage - 2)) + i;
+                                    if (pageNum >= totalPages) return null;
+                                    
+                                    return (
+                                        <button
+                                            key={pageNum}
+                                            onClick={() => handlePageChange(pageNum)}
+                                            className={`px-3 py-1 text-sm font-medium rounded-lg transition-colors ${
+                                                pageNum === currentPage
+                                                    ? 'bg-indigo-600 text-white'
+                                                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                                            }`}
+                                        >
+                                            {pageNum + 1}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <button
+                                onClick={() => handlePageChange(currentPage + 1)}
+                                disabled={currentPage >= totalPages - 1}
+                                className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            >
+                                Next
+                            </button>
+                        </div>
                     </div>
                 )}
             </div>
+
+            {/* Empty State */}
+            {auditLogs.length === 0 && !loading && (
+                <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
+                    <p className="text-gray-500 font-medium">No audit logs found</p>
+                    <p className="text-sm text-gray-400 mt-1">Logs will appear here as users interact with the system</p>
+                </div>
+            )}
         </motion.div>
     );
 };

@@ -138,6 +138,7 @@ const EnhancedLiveCommunicationHub = () => {
                                 name: groupData.name,
                                 type: 'group',
                                 participants: groupData.members,
+                                createdBy: groupData.createdBy,
                                 lastMessage: '',
                                 lastMessageTime: groupData.createdAt ? new Date(groupData.createdAt) : null,
                                 isOnline: false
@@ -151,6 +152,62 @@ const EnhancedLiveCommunicationHub = () => {
                 setNameMap(names);
                 setDirectory(identifiers.sort());
                 setConversations(convs);
+                
+                // Load last message for each conversation
+                const loadLastMessages = async () => {
+                    try {
+                        const updatedConvs = new Map(convs);
+                        
+                        // Load DM last messages
+                        for (const [channelId, conv] of updatedConvs.entries()) {
+                            if (conv.type === 'direct') {
+                                const [userA, userB] = channelId.replace(/^DM_/, '').split('|');
+                                try {
+                                    const res = await fetch(`http://localhost:8085/api/direct/history?userA=${userA}&userB=${userB}`, { credentials: 'include' });
+                                    const messages = await res.json();
+                                    if (Array.isArray(messages) && messages.length > 0) {
+                                        const lastMsg = messages[messages.length - 1];
+                                        updatedConvs.set(channelId, {
+                                            ...conv,
+                                            lastMessage: lastMsg.content || '',
+                                            lastMessageTime: new Date(lastMsg.sentAt || Date.now())
+                                        });
+                                    }
+                                } catch (e) {
+                                    console.error(`Error loading last message for ${channelId}:`, e);
+                                }
+                            }
+                        }
+                        
+                        // Load group last messages
+                        for (const [groupId, conv] of updatedConvs.entries()) {
+                            if (conv.type === 'group') {
+                                const cleanGroupId = groupId.replace(/^GROUP_/, '');
+                                try {
+                                    const res = await fetch(`http://localhost:8085/api/group/${cleanGroupId}/history`, { credentials: 'include' });
+                                    const messages = await res.json();
+                                    if (Array.isArray(messages) && messages.length > 0) {
+                                        const lastMsg = messages[messages.length - 1];
+                                        updatedConvs.set(groupId, {
+                                            ...conv,
+                                            lastMessage: lastMsg.content || '',
+                                            lastMessageTime: new Date(lastMsg.sentAt || Date.now())
+                                        });
+                                    }
+                                } catch (e) {
+                                    console.error(`Error loading last message for group ${groupId}:`, e);
+                                }
+                            }
+                        }
+                        
+                        setConversations(updatedConvs);
+                        console.log('✅ Last messages loaded for all conversations');
+                    } catch (e) {
+                        console.error('Error loading last messages:', e);
+                    }
+                };
+                
+                loadLastMessages();
             } catch (e) {
                 console.error("Error fetching user directory:", e);
             }
@@ -373,6 +430,7 @@ const EnhancedLiveCommunicationHub = () => {
                 body: JSON.stringify({
                     name: groupName,
                     createdByName: userName || selfIdentifier,
+                    createdByEmail: selfIdentifier,
                     members: [...members, selfIdentifier]
                 })
             });
@@ -394,6 +452,7 @@ const EnhancedLiveCommunicationHub = () => {
                 name: groupName,
                 type: 'group',
                 participants: [...members, selfIdentifier],
+                createdBy: selfIdentifier,
                 lastMessage: '',
                 lastMessageTime: new Date(),
                 isOnline: false
@@ -511,6 +570,53 @@ const EnhancedLiveCommunicationHub = () => {
                             console.error('Error handling call end event:', error);
                         }
                     }, { id: 'call-end-subscription' });
+                    
+                    // Subscribe to group notifications (new groups, group deleted, etc.)
+                    persistentWebSocketService.client.subscribe('/topic/group-notifications', (frame) => {
+                        try {
+                            const notification = JSON.parse(frame.body || '{}');
+                            console.log('📢 Received group notification:', notification);
+                            
+                            if (notification.type === 'NEW_GROUP') {
+                                // Add new group to conversations
+                                const newGroup = {
+                                    id: notification.groupId,
+                                    name: notification.groupName,
+                                    type: 'group',
+                                    participants: notification.members || [],
+                                    createdBy: notification.createdBy,
+                                    lastMessage: '',
+                                    lastMessageTime: new Date(),
+                                    isOnline: false
+                                };
+                                
+                                setConversations(prev => {
+                                    const newConvs = new Map(prev);
+                                    newConvs.set(notification.groupId, newGroup);
+                                    return newConvs;
+                                });
+                                
+                                // Save to localStorage
+                                try {
+                                    const storedGroups = JSON.parse(localStorage.getItem('chat_groups') || '{}');
+                                    storedGroups[notification.groupId] = {
+                                        name: notification.groupName,
+                                        members: notification.members || [],
+                                        createdAt: new Date().toISOString(),
+                                        createdBy: notification.createdBy
+                                    };
+                                    localStorage.setItem('chat_groups', JSON.stringify(storedGroups));
+                                } catch (e) {
+                                    console.error('Error saving group to localStorage:', e);
+                                }
+                                
+                                // Show notification
+                                showToastNotification('group', notification.createdBy, `${notification.createdBy} created group: ${notification.groupName}`, notification.groupId);
+                            }
+                        } catch (error) {
+                            console.error('Error handling group notification:', error);
+                        }
+                    }, { id: 'group-notifications-subscription' });
                 }
                 
                 // Subscribe to all groups (from backend and localStorage)
@@ -623,8 +729,67 @@ const EnhancedLiveCommunicationHub = () => {
                     }
                 };
                 
+                // Subscribe to all DM conversations
+                const subscribeToDMs = async () => {
+                    try {
+                        console.log('📡 Setting up DM subscriptions for:', selfIdentifier);
+                        
+                        // Get all DM conversations from the conversations map
+                        const dmConversations = Array.from(conversations.values()).filter(dmConv => dmConv.type === 'direct');
+                        console.log('📡 Found DM conversations:', dmConversations.map(c => c.id));
+                        
+                        if (persistentWebSocketService.client && persistentWebSocketService.isConnected) {
+                            dmConversations.forEach(dmConv => {
+                                const dmRoom = dmConv.id.replace(/^DM_/, '');
+                                const conversationId = dmConv.id;
+                                const topic = `/queue/dm.${dmRoom}`;
+                                console.log('📡 Subscribing to DM topic:', topic);
+                                
+                                try {
+                                    persistentWebSocketService.client.subscribe(topic, (frame) => {
+                                        try {
+                                            const newMsg = JSON.parse(frame.body || '{}');
+                                            console.log('📨 Received DM message (global subscription):', newMsg, 'for room:', dmRoom);
+                                            
+                                            // Update conversation with new message
+                                            setConversations(prev => {
+                                                const newConvs = new Map(prev);
+                                                const existingConv = newConvs.get(conversationId);
+                                                if (existingConv) {
+                                                    newConvs.set(conversationId, {
+                                                        ...existingConv,
+                                                        lastMessage: newMsg.content || '',
+                                                        lastMessageTime: new Date(newMsg.sentAt || Date.now())
+                                                    });
+                                                }
+                                                return newConvs;
+                                            });
+                                            
+                                            // Trigger new message handler for unread tracking
+                                            handleNewMessage({ ...newMsg, channelId: conversationId, roomId: dmRoom });
+                                        } catch (error) {
+                                            console.error('❌ Error handling DM message:', error);
+                                        }
+                                    }, { id: `global-dm-${dmRoom}` });
+                                    console.log('✅ DM subscription created:', topic);
+                                } catch (error) {
+                                    console.error(`❌ Error subscribing to DM ${dmRoom}:`, error);
+                                }
+                            });
+                        } else {
+                            console.warn('⚠️ WebSocket not connected for DMs, retrying in 1 second...');
+                            setTimeout(subscribeToDMs, 1000);
+                        }
+                    } catch (error) {
+                        console.error('❌ Error setting up DM subscriptions:', error);
+                    }
+                };
+                
                 // Wait a bit for connection to be fully established
-                setTimeout(subscribeToGroups, 500);
+                setTimeout(() => {
+                    subscribeToGroups();
+                    subscribeToDMs();
+                }, 500);
                 
                 return unsubscribe;
             } catch (error) {
@@ -744,6 +909,47 @@ const EnhancedLiveCommunicationHub = () => {
                 setActiveConversationId(null);
             }
             showToastNotification('message', 'System', `Group "${payload.groupName}" has been deleted`, payload.groupId);
+        } else if (payload.type === 'MEMBER_LEFT') {
+            // Update conversations to remove the member from participants
+            console.log('👤 Member left event:', payload);
+            setConversations(prev => {
+                const newConvs = new Map(prev);
+                const groupId = payload.groupId;
+                const conv = newConvs.get(groupId);
+                if (conv) {
+                    const updatedParticipants = conv.participants.filter(p => 
+                        p.toLowerCase() !== payload.memberEmail.toLowerCase()
+                    );
+                    newConvs.set(groupId, {
+                        ...conv,
+                        participants: updatedParticipants
+                    });
+                    console.log('✅ Updated participants for group:', groupId, updatedParticipants);
+                }
+                return newConvs;
+            });
+        } else if (payload.type === 'MEMBER_ADDED') {
+            // Update conversations to add the new member to participants
+            console.log('👤 Member added event:', payload);
+            setConversations(prev => {
+                const newConvs = new Map(prev);
+                const groupId = payload.groupId;
+                const conv = newConvs.get(groupId);
+                if (conv) {
+                    const memberExists = conv.participants.some(p => 
+                        p.toLowerCase() === payload.memberEmail.toLowerCase()
+                    );
+                    if (!memberExists) {
+                        const updatedParticipants = [...conv.participants, payload.memberEmail];
+                        newConvs.set(groupId, {
+                            ...conv,
+                            participants: updatedParticipants
+                        });
+                        console.log('✅ Added member to group:', groupId, payload.memberEmail);
+                    }
+                }
+                return newConvs;
+            });
         }
     }, [selfIdentifier, activeConversationId, showToastNotification]);
 
@@ -942,15 +1148,23 @@ const EnhancedLiveCommunicationHub = () => {
                                             No conversations yet
                                         </div>
                                     ) : (
-                                        filteredConversations
-                                            .sort((a, b) => {
-                                                const timeA = a.lastMessageTime || new Date(0);
-                                                const timeB = b.lastMessageTime || new Date(0);
-                                                return timeB - timeA;
-                                            })
-                                            .map(conv => {
-                                                const unreadCount = unreadCounts.get(conv.id) || 0;
-                                                const isActive = conv.id === activeConversationId;
+                                        <>
+                                            {/* Unread Section */}
+                                            {filteredConversations.filter(c => (unreadCounts.get(c.id) || 0) > 0).length > 0 && (
+                                                <>
+                                                    <div className="px-3 py-2 bg-gradient-to-r from-red-50 to-orange-50 border-b-2 border-red-200 sticky top-0 z-10">
+                                                        <p className="text-xs font-bold text-red-700 uppercase tracking-wide">🔴 Unread Messages</p>
+                                                    </div>
+                                                    {filteredConversations
+                                                        .filter(c => (unreadCounts.get(c.id) || 0) > 0)
+                                                        .sort((a, b) => {
+                                                            const timeA = a.lastMessageTime || new Date(0);
+                                                            const timeB = b.lastMessageTime || new Date(0);
+                                                            return timeB - timeA;
+                                                        })
+                                                        .map(conv => {
+                                                            const unreadCount = unreadCounts.get(conv.id) || 0;
+                                                            const isActive = conv.id === activeConversationId;
                                                 
                                                 return (
                                                     <div
@@ -1003,8 +1217,65 @@ const EnhancedLiveCommunicationHub = () => {
                                                         </div>
                                                     </div>
                                                 );
-                                            })
+                                        })}
+                                </>
+                            )}
+                            
+                            {/* Read Section */}
+                            {filteredConversations.filter(c => (unreadCounts.get(c.id) || 0) === 0).length > 0 && (
+                                <>
+                                    {filteredConversations.filter(c => (unreadCounts.get(c.id) || 0) > 0).length > 0 && (
+                                        <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 sticky top-12 z-10">
+                                            <p className="text-xs font-bold text-gray-600 uppercase tracking-wide">💬 All Messages</p>
+                                        </div>
                                     )}
+                                    {filteredConversations
+                                        .filter(c => (unreadCounts.get(c.id) || 0) === 0)
+                                        .sort((a, b) => {
+                                            const timeA = a.lastMessageTime || new Date(0);
+                                            const timeB = b.lastMessageTime || new Date(0);
+                                            return timeB - timeA;
+                                        })
+                                        .map(conv => {
+                                            const isActive = conv.id === activeConversationId;
+                                            return (
+                                                <div
+                                                    key={conv.id}
+                                                    onClick={() => selectConversation(conv.id)}
+                                                    className={`px-3 py-2.5 border-b border-gray-200 cursor-pointer transition-all duration-150 relative ${
+                                                        isActive ? 'bg-blue-50 border-l-4 border-l-blue-600' : 'hover:bg-gray-50'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center gap-2.5">
+                                                        {/* Avatar */}
+                                                        <div className="flex-shrink-0 relative">
+                                                            <Avatar name={conv.name} size={40} />
+                                                        </div>
+                                                        
+                                                        {/* Content */}
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center justify-between gap-2 mb-0.5">
+                                                                <h3 className="text-sm truncate font-medium text-gray-800">
+                                                                    {conv.name}
+                                                                </h3>
+                                                                {conv.lastMessageTime && (
+                                                                    <span className="text-xs flex-shrink-0 whitespace-nowrap text-gray-500">
+                                                                        {getRelativeTime(conv.lastMessageTime)}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <p className="text-xs truncate text-gray-600">
+                                                                {conv.lastMessage ? conv.lastMessage.substring(0, 50) + (conv.lastMessage.length > 50 ? '...' : '') : '💬 No messages yet'}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                </>
+                            )}
+                        </>
+                    )}
                                 </div>
                             </div>
 
@@ -1061,6 +1332,8 @@ const EnhancedLiveCommunicationHub = () => {
                                                 selfName={userName}
                                                 selfIdentifier={selfIdentifier}
                                                 onNewMessage={handleNewMessage}
+                                                groupMembers={conversations.get(activeConversationId)?.participants || []}
+                                                nameMap={nameMap}
                                             />
                                         </div>
                                     </>
@@ -1159,18 +1432,39 @@ const EnhancedLiveCommunicationHub = () => {
                     createdBy={conversations.get(activeConversationId)?.createdBy || ''}
                     createdAt={conversations.get(activeConversationId)?.createdAt || null}
                     currentUser={selfIdentifier}
+                    allUsers={directory}
                     onGroupLeft={(groupId) => {
                         // Remove group from conversations
                         const newConvs = new Map(conversations);
-                        newConvs.delete(activeConversationId);
+                        newConvs.delete(groupId);
                         setConversations(newConvs);
+                        
+                        // Remove from localStorage
+                        try {
+                            const storedGroups = JSON.parse(localStorage.getItem('chat_groups') || '{}');
+                            delete storedGroups[groupId];
+                            localStorage.setItem('chat_groups', JSON.stringify(storedGroups));
+                        } catch (e) {
+                            console.error('Error updating localStorage:', e);
+                        }
+                        
                         setActiveConversationId(null);
                     }}
                     onGroupDeleted={(groupId) => {
                         // Remove group from conversations
                         const newConvs = new Map(conversations);
-                        newConvs.delete(activeConversationId);
+                        newConvs.delete(groupId);
                         setConversations(newConvs);
+                        
+                        // Remove from localStorage
+                        try {
+                            const storedGroups = JSON.parse(localStorage.getItem('chat_groups') || '{}');
+                            delete storedGroups[groupId];
+                            localStorage.setItem('chat_groups', JSON.stringify(storedGroups));
+                        } catch (e) {
+                            console.error('Error updating localStorage:', e);
+                        }
+                        
                         setActiveConversationId(null);
                     }}
                 />

@@ -411,182 +411,128 @@ const AdminMonitoringDashboard = () => {
   }
 
   return (
-    <div className="space-y-8 p-8 bg-gray-50 min-h-screen">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center pb-4 border-b border-gray-200">
-        <h2 className="text-3xl font-extrabold text-teal-600">📊 Admin Monitoring Dashboard</h2>
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2 p-2 rounded-lg bg-white shadow-sm border border-gray-200">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-3xl font-bold text-gray-900">Live Monitoring</h2>
+          <p className="text-sm text-gray-500 mt-1">Real-time system activity and content tracking</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 px-3 py-2 bg-white rounded-lg border border-gray-200 shadow-sm">
             <StatusDot status={connectionStatus} />
             <span className="text-sm font-medium text-gray-700">
-              {connectionStatus === 'connected' ? 'Live Monitoring Active' : 
-               connectionStatus === 'error' ? 'Connection Error' : 'Connecting...'}
+              {connectionStatus === 'connected' ? 'Live' : 
+               connectionStatus === 'error' ? 'Error' : 'Connecting'}
             </span>
           </div>
           <button 
             onClick={fetchDashboardData}
-            className="px-4 py-2 bg-teal-500 text-white rounded-lg text-sm font-semibold hover:bg-teal-600 shadow-md transition-colors"
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
           >
-            Refresh Data
+            Refresh
           </button>
         </div>
-        
       </div>
 
-      {/* Real-Time Activity Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Recent Announcements Count */}
-        <div className="bg-gradient-to-br from-blue-50 to-cyan-50 p-6 rounded-xl shadow-lg border-2 border-blue-200">
+      {/* Summary Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white p-5 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-semibold text-blue-700">Recent Announcements</p>
-              <p className="text-4xl font-bold text-blue-900 mt-2">
+              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Announcements</p>
+              <p className="text-2xl font-bold text-gray-900 mt-2">
                 {liveInteractions.filter(i => i.type === 'announcement_created').length}
               </p>
-              <p className="text-xs text-blue-600 mt-1">In the last hour</p>
             </div>
-            <div className="text-5xl">📢</div>
+            <div className="w-12 h-12 bg-indigo-50 rounded-lg flex items-center justify-center text-lg">📢</div>
           </div>
         </div>
 
-        {/* Recent Polls Count */}
-        <div className="bg-gradient-to-br from-purple-50 to-pink-50 p-6 rounded-xl shadow-lg border-2 border-purple-200">
+        <div className="bg-white p-5 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-semibold text-purple-700">Recent Polls</p>
-              <p className="text-4xl font-bold text-purple-900 mt-2">
+              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Polls</p>
+              <p className="text-2xl font-bold text-gray-900 mt-2">
                 {liveInteractions.filter(i => i.type === 'poll_created').length}
               </p>
-              <p className="text-xs text-purple-600 mt-1">In the last hour</p>
             </div>
-            <div className="text-5xl">📊</div>
+            <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center text-lg">📊</div>
           </div>
         </div>
 
-        {/* Total Activity */}
-        <div className="bg-gradient-to-br from-green-50 to-emerald-50 p-6 rounded-xl shadow-lg border-2 border-green-200">
+        <div className="bg-white p-5 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-semibold text-green-700">Total Activity</p>
-              <p className="text-4xl font-bold text-green-900 mt-2">{liveInteractions.length}</p>
-              <p className="text-xs text-green-600 mt-1">Content items created</p>
+              <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Total Activity</p>
+              <p className="text-2xl font-bold text-gray-900 mt-2">{liveInteractions.length}</p>
             </div>
-            <div className="text-5xl">⚡</div>
+            <div className="w-12 h-12 bg-gray-50 rounded-lg flex items-center justify-center text-lg">📈</div>
           </div>
         </div>
       </div>
 
-      {/* Live Interactions - Full Width */}
-      <div>
-        {/* Live Content Activity Card */}
-        <div className="bg-white rounded-xl shadow-lg p-6 border border-gray-200">
-          <div className="flex items-center justify-between mb-6">
+      {/* Live Activity Feed */}
+      <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-                <span>⚡</span> Live Content Activity
-              </h3>
-              <p className="text-sm text-gray-500 mt-1">Recent announcements and polls • Auto-refresh every 60s</p>
+              <h3 className="text-lg font-semibold text-gray-900">Activity Feed</h3>
+              <p className="text-sm text-gray-500 mt-1">Recent content and interactions</p>
             </div>
-            <div className="flex items-center gap-3">
-              <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold flex items-center gap-1">
-                <StatusDot status={connectionStatus} />
-                <span className="ml-1">Live</span>
-              </span>
-              <button
-                onClick={fetchDashboardData}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-              >
-                🔄 Refresh
-              </button>
-            </div>
+            <span className="px-2 py-1 bg-green-50 text-green-700 rounded text-xs font-semibold flex items-center gap-1">
+              <StatusDot status={connectionStatus} />
+              Live
+            </span>
           </div>
+        </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {liveInteractions.length > 0 ? (
-              liveInteractions.map((interaction, index) => (
-                <div 
-                  key={index} 
-                  className={`rounded-xl shadow-sm p-5 border-l-4 hover:shadow-lg transition-all cursor-pointer ${
-                    interaction.type === 'announcement_created' 
-                      ? 'bg-gradient-to-br from-blue-50 to-cyan-50 border-l-blue-500' 
-                      : 'bg-gradient-to-br from-purple-50 to-pink-50 border-l-purple-500'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="text-3xl">{interaction.icon || (interaction.type === 'announcement_created' ? '📢' : '📊')}</div>
-                    <div className="flex-1">
-                      {interaction.type === 'announcement_created' ? (
-                        <>
-                          <div className="flex items-start justify-between mb-2">
-                            <p className="text-base font-bold text-gray-800 line-clamp-2">{interaction.title}</p>
-                            <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold whitespace-nowrap ml-2">
-                              {interaction.announcementType}
-                            </span>
-                          </div>
-                          <p className="text-sm text-gray-600 flex items-center gap-1 mt-2">
-                            <span>👤</span> 
-                            <span className="font-medium">{interaction.createdBy}</span>
-                          </p>
-                          {interaction.likesCount > 0 && (
-                            <p className="text-sm text-blue-600 flex items-center gap-1 mt-2">
-                              <span>👍</span> {interaction.likesCount} likes
-                            </p>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <div className="flex items-start justify-between mb-2">
-                            <p className="text-base font-bold text-gray-800 line-clamp-2">{interaction.question}</p>
-                            <span className={`px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap ml-2 ${
-                              interaction.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
-                            }`}>
-                              {interaction.isActive ? '✓ Active' : '✕ Closed'}
-                            </span>
-                          </div>
-                          <p className="text-sm text-gray-600 flex items-center gap-1 mt-2">
-                            <span>👤</span> 
-                            <span className="font-medium">{interaction.createdBy}</span>
-                          </p>
-                        </>
+        <div className="divide-y divide-gray-200">
+          {liveInteractions.length > 0 ? (
+            liveInteractions.map((interaction, index) => (
+              <div 
+                key={index} 
+                className="px-6 py-4 hover:bg-gray-50 transition-colors border-l-4 border-l-gray-200"
+              >
+                <div className="flex items-start gap-4">
+                  <div className="text-2xl flex-shrink-0">
+                    {interaction.type === 'announcement_created' ? '📢' : '📊'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">
+                          {interaction.type === 'announcement_created' ? 'Announcement' : 'Poll'}
+                        </p>
+                        <p className="text-sm text-gray-600 mt-1 line-clamp-2">
+                          {interaction.title || interaction.question || 'No title'}
+                        </p>
+                      </div>
+                      {interaction.announcementType && (
+                        <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-medium whitespace-nowrap flex-shrink-0">
+                          {interaction.announcementType}
+                        </span>
                       )}
-                      <p className="text-xs text-gray-500 mt-3 flex items-center gap-1">
-                        <span>🕐</span> {new Date(interaction.timestamp).toLocaleString()}
-                      </p>
+                    </div>
+                    <div className="flex items-center gap-4 mt-3 text-xs text-gray-500">
+                      <span>By {interaction.createdBy || 'Unknown'}</span>
+                      <span>•</span>
+                      <span>{new Date(interaction.timestamp).toLocaleTimeString()}</span>
                     </div>
                   </div>
                 </div>
-              ))
-            ) : (
-              <div className="col-span-full text-center py-12 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border-2 border-dashed border-gray-300">
-                <div className="text-gray-400 text-6xl mb-4">📭</div>
-                <p className="text-gray-600 font-semibold text-lg">No recent content activity</p>
-                <p className="text-sm text-gray-400 mt-2">Announcements and polls will appear here as they're created</p>
               </div>
-            )}
-          </div>
+            ))
+          ) : (
+            <div className="px-6 py-12 text-center">
+              <p className="text-gray-500 font-medium">No recent activity</p>
+              <p className="text-sm text-gray-400 mt-1">Activity will appear here as it occurs</p>
+            </div>
+          )}
         </div>
-
-
       </div>
     </div>
   );
 };
-
-// Helper component for activity stat display
-const ActivityStat = ({ count, label, color }) => {
-    const colorClasses = {
-        blue: 'text-blue-600',
-        green: 'text-green-600',
-        purple: 'text-purple-600',
-        orange: 'text-orange-600',
-    }[color];
-
-    return (
-        <div className="text-center p-2 rounded-md bg-gray-50">
-            <div className={`text-2xl font-extrabold ${colorClasses}`}>{count}</div>
-            <div className="text-sm text-gray-600">{label}</div>
-        </div>
-    );
-}
 
 export default AdminMonitoringDashboard;

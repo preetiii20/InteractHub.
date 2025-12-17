@@ -4,12 +4,16 @@ import { Client } from '@stomp/stompjs';
 import { Avatar } from '../../utils/avatarGenerator';
 import { getRelativeTime, isSameDay, getDateOnly } from '../../utils/timeFormatter';
 import SystemMessage from './SystemMessage';
+import MessageStatus from './MessageStatus';
+import FileAttachment from './FileAttachment';
 import ConnectionStatus from './ConnectionStatus';
 import MessageReactions from './MessageReactions';
 import ChatSearch from './ChatSearch';
 import MessageOptions from './MessageOptions';
 import QuotedMessage from './QuotedMessage';
 import LinkPreview from './LinkPreview';
+import MentionInput from './MentionInput';
+import SharedMediaGallery from './SharedMediaGallery';
 import { 
   formatMessageTime, 
   formatMessageDate,
@@ -27,7 +31,9 @@ import {
 // - selfName: viewer's displayName string (for UI bubble display)
 // - selfIdentifier: viewer's unique ID/Email (for DM logic and routing)
 // - onNewMessage: callback when new message arrives (optional)
-const ChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage }) => {
+// - groupMembers: array of group members for @mentions (optional)
+// - nameMap: object mapping emails to display names (optional)
+const ChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage, groupMembers: propGroupMembers = [], nameMap = {} }) => {
     const [messages, setMessages] = useState([]);
     const [text, setText] = useState('');
     const [uploading, setUploading] = useState(false);
@@ -40,6 +46,8 @@ const ChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage }) => {
     const [selectedMessage, setSelectedMessage] = useState(null);
     const [messageReactions, setMessageReactions] = useState({});
     const [highlightedMessageId, setHighlightedMessageId] = useState(null);
+    const [showMediaGallery, setShowMediaGallery] = useState(false);
+    const [groupMembers, setGroupMembers] = useState([]);
     const fileInputRef = useRef(null);
     const stompRef = useRef(null);
     const typingTimeoutRef = useRef(null);
@@ -211,7 +219,23 @@ const ChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage }) => {
                 } else if (isGroup && groupId) {
                     const res = await fetch(`http://localhost:8085/api/group/${groupId}/history`, { credentials: 'include' });
                     const data = await res.json();
-                    setMessages(Array.isArray(data) ? data : []);
+                    const messagesData = Array.isArray(data) ? data : [];
+                    setMessages(messagesData);
+                    
+                    // Extract members from message history (includes those who have left)
+                    const messageSenders = [...new Set(
+                        messagesData
+                            .filter(m => m.senderName && m.senderName !== 'System')
+                            .map(m => m.senderName)
+                    )];
+                    
+                    // Combine current members (from prop) with historical members (from messages)
+                    const allMembers = [...new Set([
+                        ...(propGroupMembers || []),
+                        ...messageSenders
+                    ])];
+                    
+                    setGroupMembers(allMembers.length > 0 ? allMembers : messageSenders);
                 }
             } catch {}
         })();
@@ -418,8 +442,38 @@ const ChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage }) => {
         }
     };
 
-    const handleDeleteMessage = (messageId) => {
-        setMessages(prev => prev.filter(m => m.id !== messageId));
+    const handleDeleteMessage = async (messageId) => {
+        try {
+            if (isGroup && groupId) {
+                // Delete group message
+                const response = await fetch(
+                    `http://localhost:8085/api/group/message/${messageId}/delete`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify({ userId: normalizedSelfIdentifier })
+                    }
+                );
+
+                if (response.ok) {
+                    console.log('✅ Message deleted successfully');
+                    // Message will be updated via WebSocket with system message
+                } else {
+                    const error = await response.text();
+                    console.error('❌ Error deleting message:', error);
+                    alert('Failed to delete message: ' + error);
+                }
+            } else if (isDm && dmRoom) {
+                // Delete DM message - for now just remove from UI
+                // Backend DM delete endpoint may not be implemented yet
+                setMessages(prev => prev.filter(m => m.id !== messageId));
+                console.log('✅ DM message removed from UI');
+            }
+        } catch (error) {
+            console.error('❌ Error deleting message:', error);
+            alert('Failed to delete message. Please try again.');
+        }
         setSelectedMessage(null);
     };
 
@@ -439,10 +493,11 @@ const ChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage }) => {
         const style = mine ? 'bg-green-500 text-white' : 'bg-white text-gray-800 border border-gray-200';
         const isImage = m.fileType && m.fileType.startsWith('image/');
         const hasFile = m.fileUrl && m.fileName;
-        const isSystemMessage = m.senderName === 'System' || m.type === 'SYSTEM';
+        const isSystemMessage = m.senderName === 'System' || m.type === 'SYSTEM' || m.isSystemMessage || m.messageType === 'SYSTEM';
         const canDelete = mine && canDeleteMessage(m.sentAt);
         const deleteTimeRemaining = canDelete ? getDeleteTimeRemaining(m.sentAt) : null;
 
+        // Handle system messages
         if (isSystemMessage) {
             return <SystemMessage message={m.content} timestamp={m.sentAt} />;
         }
@@ -517,7 +572,29 @@ const ChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage }) => {
                             
                             {/* Message Content */}
                             {m.content && (
-                                <div className="text-sm whitespace-pre-wrap break-words">{m.content}</div>
+                                <div className="text-sm whitespace-pre-wrap break-words">
+                                    {m.content.split(/(@[A-Z][a-z]*(?:\s+[A-Z][a-z]*)*)(?=\s|$)/g).map((part, idx) => {
+                                        if (part && part.startsWith('@')) {
+                                            // Extract the mention text (remove @)
+                                            const mentionText = part.substring(1).trim();
+                                            // Find the email for this mention by looking in nameMap
+                                            const email = Object.entries(nameMap || {}).find(
+                                                ([_, name]) => name === mentionText
+                                            )?.[0] || mentionText;
+                                            
+                                            return (
+                                                <span 
+                                                    key={idx} 
+                                                    className="bg-teal-500 text-white font-semibold px-2 py-1 rounded-md inline-block hover:bg-teal-600 transition-colors cursor-pointer"
+                                                    title={email}
+                                                >
+                                                    @{mentionText}
+                                                </span>
+                                            );
+                                        }
+                                        return <span key={idx}>{part}</span>;
+                                    })}
+                                </div>
                             )}
                             
                             {/* Link Preview */}
@@ -529,9 +606,10 @@ const ChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage }) => {
                                     {formatMessageTime(m.sentAt)}
                                 </span>
                                 {mine && (
-                                    <span className={getStatusColor(m.status || 'SENT')}>
-                                        {getStatusIcon(m.status || 'SENT')}
-                                    </span>
+                                    <MessageStatus 
+                                        status={m.status || 'SENT'}
+                                        timestamp={m.sentAt}
+                                    />
                                 )}
                             </div>
                         </div>
@@ -577,6 +655,19 @@ const ChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage }) => {
     };
 
     const messagesEndRef = useRef(null);
+    
+    // Extract reactions from messages when they change
+    useEffect(() => {
+        const reactionsMap = {};
+        messages.forEach(msg => {
+            if (msg.reactions && typeof msg.reactions === 'object') {
+                reactionsMap[msg.id] = msg.reactions;
+            }
+        });
+        if (Object.keys(reactionsMap).length > 0) {
+            setMessageReactions(prev => ({ ...prev, ...reactionsMap }));
+        }
+    }, [messages]);
     
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -625,13 +716,22 @@ const ChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage }) => {
         <div className="h-full flex flex-col bg-gradient-to-b from-gray-50 to-white">
             {/* Header with Connection Status and Search */}
             <div className="border-b bg-white px-4 py-3 flex items-center justify-between">
-                <button
-                  onClick={() => setShowSearch(!showSearch)}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-all"
-                  title="Search messages"
-                >
-                  🔍
-                </button>
+                <div className="flex gap-2">
+                    <button
+                      onClick={() => setShowSearch(!showSearch)}
+                      className="p-2 hover:bg-gray-100 rounded-lg transition-all"
+                      title="Search messages"
+                    >
+                      🔍
+                    </button>
+                    <button
+                      onClick={() => setShowMediaGallery(true)}
+                      className="p-2 hover:bg-gray-100 rounded-lg transition-all"
+                      title="View shared media, links & docs"
+                    >
+                      🖼️
+                    </button>
+                </div>
                 <ConnectionStatus isConnected={isConnected} showLabel={true} />
             </div>
 
@@ -702,7 +802,7 @@ const ChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage }) => {
                     </>
                 )}
             </div>
-            <div className="border-t border-gray-200 bg-white px-3 py-2.5">
+            <div className="border-t border-gray-200 bg-white px-3 py-2.5 overflow-visible">
                 {/* Quoted Message */}
                 <QuotedMessage 
                   quotedMessage={quotedMessage}
@@ -725,7 +825,7 @@ const ChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage }) => {
                     </div>
                 )}
                 
-                <div className="flex gap-1.5 items-end">
+                <div className="flex gap-1.5 items-end overflow-visible">
                     <input
                         type="file"
                         ref={fileInputRef}
@@ -742,14 +842,16 @@ const ChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage }) => {
                     >
                         {uploading ? '⏳' : '📎'}
                     </button>
-                    <div className="flex-1 relative">
-                        <input
-                            className="w-full border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:bg-gray-50 text-sm"
-                            placeholder={uploading ? "Uploading file..." : "Type a message"}
+                    <div className="flex-1 relative overflow-visible z-50">
+                        <MentionInput
                             value={text}
                             onChange={handleTyping}
                             onKeyDown={e => e.key==='Enter' && !e.shiftKey && send()}
-                            disabled={uploading}
+                            onMention={(member) => {
+                                console.log('User mentioned:', member);
+                            }}
+                            members={isGroup ? groupMembers : []}
+                            nameMap={nameMap}
                         />
                     </div>
                     <button 
@@ -761,6 +863,13 @@ const ChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage }) => {
                     </button>
                 </div>
             </div>
+
+            {/* Shared Media Gallery Modal */}
+            <SharedMediaGallery
+              isOpen={showMediaGallery}
+              onClose={() => setShowMediaGallery(false)}
+              messages={messages}
+            />
         </div>
     );
 };

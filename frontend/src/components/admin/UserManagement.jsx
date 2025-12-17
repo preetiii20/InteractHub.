@@ -122,20 +122,18 @@ const UserManagement = () => {
       )}
 
       {/* User Table with Staggered Animation */}
-      <div className="bg-white p-6 rounded-xl shadow-lg overflow-x-auto">
+      <div className="bg-gradient-to-br from-indigo-100 via-blue-50 to-purple-100 p-6 rounded-xl shadow-lg overflow-x-auto border border-indigo-200">
         <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+          <thead className="bg-gradient-to-r from-indigo-200 to-blue-200">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created By</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Name</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Email</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Role</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
           <motion.tbody 
-            className="bg-white divide-y divide-gray-200"
+            className="divide-y divide-gray-200"
             variants={{
               animate: { transition: { staggerChildren: 0.05 } }
             }}
@@ -143,10 +141,9 @@ const UserManagement = () => {
             animate="animate"
           >
             {users.map((user, index) => (
-              <motion.tr key={user.id} variants={rowVariants} transition={{ delay: index * 0.05 }}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.id}</td>
+              <motion.tr key={user.id} variants={rowVariants} transition={{ delay: index * 0.05 }} className="bg-gradient-to-r from-indigo-100/60 to-blue-100/60 hover:from-indigo-200/70 hover:to-blue-200/70 transition-colors">
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{user.firstName} {user.lastName}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.email}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{user.email}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
                   <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
                     user.role === 'ADMIN' ? 'bg-red-100 text-red-800' :
@@ -157,11 +154,10 @@ const UserManagement = () => {
                     {user.role}
                   </span>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.createdBy || 'System'}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                   <button 
                     onClick={() => handleDelete(user.id)}
-                    className="text-red-600 hover:text-red-900 ml-4 transition"
+                    className="text-red-600 hover:text-red-900 transition"
                   >
                     Delete
                   </button>

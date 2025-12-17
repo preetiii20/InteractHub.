@@ -5,17 +5,24 @@ import { Client } from '@stomp/stompjs';
 import { motion } from 'framer-motion';
 import apiConfig from '../../config/api';
 import { authHelpers } from '../../config/auth';
-import LiveAnnouncementComponent from '../manager/LiveAnnouncementComponent';
-import LivePollComponent from '../manager/LivePollComponent';
+import AnnouncementList from '../shared/AnnouncementList';
+import PollList from '../shared/PollList';
 
 const variants = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } };
 
 const EmployeeGlobalComms = () => {
-  const [globalComms, setGlobalComms] = useState([]);
+  const [announcements, setAnnouncements] = useState([]);
+  const [polls, setPolls] = useState([]);
   const [globalAnnouncement, setGlobalAnnouncement] = useState({ title: '', content: '', type: 'GENERAL' });
   const [globalPoll, setGlobalPoll] = useState({ question: '', options: [''] });
   const [message, setMessage] = useState(null);
   const [userLikes, setUserLikes] = useState({});
+  const [likeCounts, setLikeCounts] = useState({});
+  const [comments, setComments] = useState({});
+  const [pollResults, setPollResults] = useState({});
+  const [userVotes, setUserVotes] = useState({});
+  const [commentDrafts, setCommentDrafts] = useState({});
+  const [pollChoice, setPollChoice] = useState({});
 
   const stompRef = useRef(null);
   const myName = authHelpers.getUserName();
@@ -32,14 +39,14 @@ const EmployeeGlobalComms = () => {
         try {
           const ann = JSON.parse(m.body || '{}');
           const a = (ann.targetAudience || '').toUpperCase();
-          if (['ALL', 'EMPLOYEE', 'ADMIN'].includes(a)) setGlobalComms(prev => [ann, ...prev]);
+          if (['ALL', 'EMPLOYEE', 'ADMIN'].includes(a)) setAnnouncements(prev => [ann, ...prev]);
         } catch {}
       });
       chatClient.subscribe('/topic/polls.new', m => {
         try {
           const poll = JSON.parse(m.body || '{}');
           const a = (poll.targetAudience || '').toUpperCase();
-          if (['ALL', 'EMPLOYEE', 'ADMIN'].includes(a)) setGlobalComms(prev => [poll, ...prev]);
+          if (['ALL', 'EMPLOYEE', 'ADMIN'].includes(a)) setPolls(prev => [poll, ...prev]);
         } catch {}
       });
       
@@ -48,6 +55,7 @@ const EmployeeGlobalComms = () => {
           const reaction = JSON.parse(msg.body || '{}');
           if (reaction.type === 'LIKE') {
             setUserLikes(prev => ({ ...prev, [reaction.announcementId]: reaction.liked }));
+            fetchGlobal();
           } else if (reaction.type === 'COMMENT') {
             fetchGlobal();
           }
@@ -61,7 +69,7 @@ const EmployeeGlobalComms = () => {
       adminClient.subscribe('/topic/announcements.deleted', (msg) => {
         try {
           const deletion = JSON.parse(msg.body || '{}');
-          setGlobalComms(prev => prev.filter(item => !('content' in item) || item.id !== deletion.id));
+          setAnnouncements(prev => prev.filter(item => item.id !== deletion.id));
         } catch (error) {
           console.error('Error processing announcement deletion:', error);
         }
@@ -70,7 +78,7 @@ const EmployeeGlobalComms = () => {
       adminClient.subscribe('/topic/polls.deleted', (msg) => {
         try {
           const deletion = JSON.parse(msg.body || '{}');
-          setGlobalComms(prev => prev.filter(item => !('question' in item) || item.id !== deletion.id));
+          setPolls(prev => prev.filter(item => item.id !== deletion.id));
         } catch (error) {
           console.error('Error processing poll deletion:', error);
         }
@@ -92,18 +100,22 @@ const EmployeeGlobalComms = () => {
         axios.get(`${apiConfig.adminService}/announcements/target/ALL`),
         axios.get(`${apiConfig.adminService}/polls/target/ALL`)
       ]);
-      setGlobalComms([...(ra.data || []), ...(rp.data || [])]);
+      setAnnouncements(ra.data || []);
+      setPolls(rp.data || []);
       loadUserLikes(ra.data || []);
+      loadLikeCounts(ra.data || []);
+      loadComments(ra.data || []);
+      (rp.data || []).forEach(p => refreshPollResults(p.id));
     } catch {
       setMessage({ type: 'error', text: 'Could not fetch communications.' });
     }
   };
 
-  const loadUserLikes = async (announcements) => {
+  const loadUserLikes = async (announcementsList) => {
     const currentUser = authHelpers.getUserName() || 'User';
     const likes = {};
     
-    for (const ann of announcements) {
+    for (const ann of announcementsList) {
       try {
         const base = apiConfig.chatService.replace('/api/chat','/api/interactions');
         const response = await fetch(`${base}/announcement/${ann.id}/interactions`);
@@ -118,6 +130,50 @@ const EmployeeGlobalComms = () => {
     }
     
     setUserLikes(likes);
+  };
+
+  const loadLikeCounts = async (announcementsList) => {
+    const counts = {};
+    
+    for (const ann of announcementsList) {
+      try {
+        const base = apiConfig.chatService.replace('/api/chat','/api/interactions');
+        const response = await fetch(`${base}/announcement/${ann.id}/likes/count`);
+        const result = await response.json();
+        counts[ann.id] = result.count || 0;
+      } catch (error) {
+        counts[ann.id] = 0;
+      }
+    }
+    
+    setLikeCounts(counts);
+  };
+
+  const loadComments = async (announcementsList) => {
+    const allComments = {};
+    
+    for (const ann of announcementsList) {
+      try {
+        const base = apiConfig.chatService.replace('/api/chat','/api/interactions');
+        const response = await fetch(`${base}/announcement/${ann.id}/interactions`);
+        const interactions = await response.json();
+        const commentList = interactions.filter(i => i.type === 'COMMENT');
+        allComments[ann.id] = commentList;
+      } catch (error) {
+        allComments[ann.id] = [];
+      }
+    }
+    
+    setComments(allComments);
+  };
+
+  const refreshPollResults = async (pollId) => {
+    try {
+      const base = apiConfig.chatService.replace('/api/chat','/api/interactions');
+      const res = await fetch(`${base}/poll/${pollId}/results`);
+      const results = await res.json();
+      setPollResults(prev => ({ ...prev, [pollId]: results || { totalVotes: 0, optionCounts: {} } }));
+    } catch {}
   };
 
   const handleCreateGlobalAnnouncement = async (e) => {
@@ -170,6 +226,55 @@ const EmployeeGlobalComms = () => {
     setGlobalPoll(p => ({ ...p, options: next }));
   };
 
+  const likeAnnouncement = async (ann) => {
+    try {
+      const base = apiConfig.chatService.replace('/api/chat','/api/interactions');
+      const response = await fetch(`${base}/announcement/like`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ announcementId: ann.id, userName: authHelpers.getUserName() || 'User', type: 'LIKE' })
+      });
+      
+      if (!response.ok) return;
+      
+      const result = await response.json();
+      setUserLikes(prev => ({ ...prev, [ann.id]: result.liked }));
+      fetchGlobal();
+    } catch (error) {
+      console.error('Like error:', error);
+    }
+  };
+
+  const commentAnnouncement = async (ann, text) => {
+    const content = String(text || '').trim();
+    if (!content) return;
+    try {
+      const base = apiConfig.chatService.replace('/api/chat','/api/interactions');
+      await fetch(`${base}/announcement/comment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ announcementId: ann.id, userName: authHelpers.getUserName() || 'User', content, type: 'COMMENT' })
+      });
+      setCommentDrafts(p => ({ ...p, [ann.id]: '' }));
+      loadComments([ann]);
+    } catch {}
+  };
+
+  const votePoll = async (poll, selected) => {
+    if (!selected) return;
+    try {
+      const base = apiConfig.chatService.replace('/api/chat','/api/interactions');
+      await fetch(`${base}/poll/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pollId: poll.id, voterName: authHelpers.getUserName() || 'User', selectedOption: selected })
+      });
+      setPollChoice(p => ({ ...p, [poll.id]: '' }));
+      setUserVotes(p => ({ ...p, [poll.id]: selected }));
+      refreshPollResults(poll.id);
+    } catch {}
+  };
+
   const deleteAnnouncement = async (id) => {
     if (!window.confirm('Are you sure you want to delete this announcement?')) return;
     try {
@@ -200,7 +305,7 @@ const EmployeeGlobalComms = () => {
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
-      <h1 className="text-3xl font-bold text-gray-800">Employee Communications</h1>
+      <h1 className="text-3xl font-bold text-blue-700">Employee Communications</h1>
 
       {message && (
         <motion.div 
@@ -253,11 +358,11 @@ const EmployeeGlobalComms = () => {
         </form>
       </div>
 
-      <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-purple-500">
+      <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-indigo-600">
         <h2 className="text-xl font-semibold mb-3">Create Global Poll</h2>
         <form onSubmit={handleCreateGlobalPoll} className="space-y-3" onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}>
           <input 
-            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none" 
+            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none" 
             placeholder="Poll Question" 
             value={globalPoll.question} 
             onChange={e => setGlobalPoll(p => ({ ...p, question: e.target.value }))} 
@@ -267,7 +372,7 @@ const EmployeeGlobalComms = () => {
           {(globalPoll.options || []).slice(0, 4).map((opt, idx) => (
             <div key={idx} className="flex gap-2">
               <input 
-                className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:outline-none" 
+                className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none" 
                 placeholder={`Option ${idx + 1}`} 
                 value={opt} 
                 onChange={e => handlePollOptionChange(idx, e.target.value)} 
@@ -286,7 +391,7 @@ const EmployeeGlobalComms = () => {
           <div className="flex justify-end">
             <button 
               type="submit" 
-              className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+              className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
             >
               Launch Poll
             </button>
@@ -294,32 +399,36 @@ const EmployeeGlobalComms = () => {
         </form>
       </div>
 
-      <h2 className="text-2xl font-semibold text-gray-800 border-b pb-2">Live Updates</h2>
-      <motion.div 
-        className="space-y-4" 
-        initial="hidden" 
-        animate="show" 
-        variants={{ show: { transition: { staggerChildren: 0.1 } } }}
-      >
-        {globalComms.length > 0 ? globalComms
-          .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
-          .map((item, i) => (
-            <motion.div key={`${'content' in item ? 'ann' : 'poll'}-${item.id || i}`} variants={variants}>
-              {'content' in item
-                ? <LiveAnnouncementComponent 
-                    announcement={item} 
-                    onDelete={deleteAnnouncement} 
-                    userLikes={userLikes} 
-                    setUserLikes={setUserLikes} 
-                    stompClient={stompRef.current?.chat} 
-                  />
-                : 'question' in item
-                  ? <LivePollComponent poll={item} onDelete={deletePoll} />
-                  : <div className="p-4 bg-gray-100 rounded">Unsupported item</div>
-              }
-            </motion.div>
-          )) : <p className="text-gray-500 p-4 bg-white rounded-lg">No communications available.</p>}
-      </motion.div>
+      <div>
+        <h2 className="text-2xl font-semibold text-blue-700 border-b-2 border-blue-600 pb-2">Announcements</h2>
+        <AnnouncementList 
+          items={announcements} 
+          onLike={likeAnnouncement} 
+          onComment={commentAnnouncement} 
+          onDelete={deleteAnnouncement} 
+          drafts={commentDrafts} 
+          setDrafts={setCommentDrafts} 
+          userLikes={userLikes} 
+          likeCounts={likeCounts} 
+          comments={comments} 
+          stompClient={stompRef.current?.chat}
+          theme="blue"
+        />
+      </div>
+
+      <div>
+        <h2 className="text-2xl font-semibold text-indigo-700 border-b-2 border-indigo-600 pb-2">Polls</h2>
+        <PollList 
+          items={polls} 
+          resultsMap={pollResults} 
+          onVote={votePoll} 
+          onDelete={deletePoll} 
+          choice={pollChoice} 
+          setChoice={setPollChoice} 
+          userVotes={userVotes}
+          theme="blue"
+        />
+      </div>
     </motion.div>
   );
 };

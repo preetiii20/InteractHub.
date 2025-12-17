@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { BarChart3, Briefcase, Users, User, FileText, TrendingUp, Calendar, Clock } from 'lucide-react';
 
 const ComprehensiveAdminDashboard = () => {
   const [loading, setLoading] = useState(true);
@@ -113,11 +114,11 @@ const ComprehensiveAdminDashboard = () => {
       {/* Navigation Tabs */}
       <div className="flex gap-2 mb-6 overflow-x-auto bg-white rounded-lg shadow-sm p-2 border border-gray-200">
         {[
-          { id: 'overview', label: 'Overview', icon: '📊' },
-          { id: 'managers', label: 'Managers', icon: '👔' },
-          { id: 'hr', label: 'HR', icon: '👥' },
-          { id: 'employees', label: 'Employees', icon: '👤' },
-          { id: 'activities', label: 'Activities', icon: '📝' },
+          { id: 'overview', label: 'Overview', Icon: BarChart3 },
+          { id: 'managers', label: 'Managers', Icon: Briefcase },
+          { id: 'hr', label: 'HR', Icon: Users },
+          { id: 'employees', label: 'Employees', Icon: User },
+          { id: 'activities', label: 'Activities', Icon: FileText },
         ].map(tab => (
           <button
             key={tab.id}
@@ -128,7 +129,7 @@ const ComprehensiveAdminDashboard = () => {
                 : 'text-gray-600 hover:bg-gray-100'
             }`}
           >
-            <span>{tab.icon}</span>
+            <tab.Icon size={18} />
             {tab.label}
           </button>
         ))}
@@ -256,7 +257,7 @@ const OverviewTab = ({ stats }) => {
       {stats.managerStats && stats.managerStats.error !== 'Service unavailable' && (
         <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
           <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <span>📊</span> Manager Service Overview
+            <BarChart3 size={24} className="text-gray-700" /> Manager Service Overview
           </h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {Object.entries(stats.managerStats).map(([key, value]) => (
@@ -273,7 +274,7 @@ const OverviewTab = ({ stats }) => {
       {stats.hrStats && stats.hrStats.error !== 'Service unavailable' && (
         <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
           <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <span>👥</span> HR Service Overview
+            <Users size={24} className="text-gray-700" /> HR Service Overview
           </h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {Object.entries(stats.hrStats).map(([key, value]) => (
@@ -299,7 +300,7 @@ const ManagersTab = ({ managers }) => {
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-              <span>👔</span> Manager Overview
+              <Briefcase size={24} className="text-gray-700" /> Manager Overview
             </h3>
             <p className="text-gray-600 text-sm mt-1">Total Managers: {managers.length}</p>
           </div>
@@ -392,7 +393,7 @@ const ManagersTab = ({ managers }) => {
                       <div>
                         <div className="flex items-center justify-between mb-3">
                           <h5 className="font-semibold text-gray-700 flex items-center gap-2">
-                            <span>📊</span> Projects ({manager.projects.length})
+                            <BarChart3 size={18} className="text-gray-600" /> Projects ({manager.projects.length})
                           </h5>
                         </div>
                         <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -432,7 +433,7 @@ const ManagersTab = ({ managers }) => {
                       <div>
                         <div className="flex items-center justify-between mb-3">
                           <h5 className="font-semibold text-gray-700 flex items-center gap-2">
-                            <span>👥</span> Team Members ({manager.team.length})
+                            <Users size={18} className="text-gray-600" /> Team Members ({manager.team.length})
                           </h5>
                         </div>
                         <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto">
@@ -533,7 +534,7 @@ const HRTab = ({ hrOverview }) => {
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-              <span>👥</span> HR Overview
+              <Users size={24} className="text-gray-700" /> HR Overview
             </h3>
             <p className="text-gray-600 text-sm mt-1">Total HR Staff: {localHrOverview.hrCount || 0}</p>
           </div>
@@ -619,7 +620,7 @@ const HRTab = ({ hrOverview }) => {
                     {/* Activity Metrics */}
                     <div>
                       <h5 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                        <span>📊</span> Activity Metrics
+                        <TrendingUp size={18} className="text-gray-600" /> Activity Metrics
                       </h5>
                       <div className="grid grid-cols-2 gap-3">
                         <div className="bg-white p-3 rounded-lg border border-gray-200">
@@ -675,7 +676,7 @@ const HRTab = ({ hrOverview }) => {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-              <span>🏖️</span> Leave Management
+              <Calendar size={24} className="text-gray-700" /> Leave Management
             </h3>
             <p className="text-xs text-gray-600 mt-1">
               User status and leave request overview
@@ -731,7 +732,7 @@ const HRTab = ({ hrOverview }) => {
       {hrOverview.pendingLeaves && hrOverview.pendingLeaves.length > 0 && (
         <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
           <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <span>⏳</span> Pending Leave Requests
+            <Clock size={24} className="text-gray-700" /> Pending Leave Requests
           </h3>
           <div className="space-y-3">
             {hrOverview.pendingLeaves.map((leave, index) => (
@@ -1134,7 +1135,7 @@ const ActivitiesTab = ({ activities }) => {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-              <span>📝</span> Recent Activities
+              <FileText size={24} className="text-gray-700" /> Recent Activities
             </h3>
             <p className="text-gray-600 text-sm mt-1">
               System activity feed • {activityStats.total} total activities

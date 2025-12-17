@@ -159,11 +159,11 @@ const ProfessionalAuthPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4 relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 p-4 relative overflow-hidden">
       {/* Animated background elements */}
       <div className="absolute inset-0 overflow-hidden">
         <motion.div
-          className="absolute -top-40 -right-40 w-80 h-80 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-20"
+          className="absolute -top-40 -right-40 w-96 h-96 bg-blue-500 rounded-full mix-blend-multiply filter blur-3xl opacity-30"
           animate={{
             scale: [1, 1.2, 1],
             x: [0, 50, 0],
@@ -176,7 +176,7 @@ const ProfessionalAuthPage = () => {
           }}
         />
         <motion.div
-          className="absolute -bottom-40 -left-40 w-80 h-80 bg-blue-500 rounded-full mix-blend-multiply filter blur-xl opacity-20"
+          className="absolute -bottom-40 -left-40 w-96 h-96 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl opacity-30"
           animate={{
             scale: [1, 1.3, 1],
             x: [0, -50, 0],
@@ -189,7 +189,7 @@ const ProfessionalAuthPage = () => {
           }}
         />
         <motion.div
-          className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-indigo-500 rounded-full mix-blend-multiply filter blur-xl opacity-20"
+          className="absolute top-1/2 right-1/4 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-cyan-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20"
           animate={{
             scale: [1, 1.1, 1],
             rotate: [0, 180, 360],
@@ -202,32 +202,119 @@ const ProfessionalAuthPage = () => {
         />
       </div>
 
-      {/* Main auth container */}
+      {/* Main auth container - Split layout */}
       <motion.div
-        className="w-full max-w-md relative z-10"
+        className="w-full max-w-6xl relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-8 items-center"
         initial="hidden"
         animate="visible"
         variants={containerVariants}
       >
-        {/* Logo and branding */}
+        {/* Left side - Branding and features */}
         <motion.div 
-          className="text-center mb-8"
+          className="hidden lg:flex flex-col justify-center space-y-8"
+          variants={itemVariants}
+        >
+          <div>
+            <motion.div
+              className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-2xl shadow-2xl mb-6"
+              whileHover={{ scale: 1.05, rotate: 5 }}
+              transition={{ type: "spring", stiffness: 300 }}
+            >
+              <span className="text-3xl">🚀</span>
+            </motion.div>
+            <h1 className="text-5xl font-bold text-white mb-3">InteractHub</h1>
+            <p className="text-xl text-gray-300 mb-2">Enterprise Communication</p>
+            <p className="text-gray-400">Smart collaboration for modern teams</p>
+          </div>
+
+          {/* Feature highlights */}
+          <div className="space-y-4">
+            <motion.div 
+              className="flex items-start gap-4 p-4 bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 hover:border-blue-500/50 transition-all"
+              whileHover={{ x: 10 }}
+            >
+              <div className="text-2xl">⚡</div>
+              <div>
+                <h3 className="font-semibold text-white">Real-time Collaboration</h3>
+                <p className="text-sm text-gray-400">Instant messaging and live communication</p>
+              </div>
+            </motion.div>
+
+            <motion.div 
+              className="flex items-start gap-4 p-4 bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 hover:border-blue-500/50 transition-all"
+              whileHover={{ x: 10 }}
+            >
+              <div className="text-2xl">🔒</div>
+              <div>
+                <h3 className="font-semibold text-white">Enterprise Security</h3>
+                <p className="text-sm text-gray-400">Bank-level encryption and compliance</p>
+              </div>
+            </motion.div>
+
+            <motion.div 
+              className="flex items-start gap-4 p-4 bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 hover:border-blue-500/50 transition-all"
+              whileHover={{ x: 10 }}
+            >
+              <div className="text-2xl">📊</div>
+              <div>
+                <h3 className="font-semibold text-white">Advanced Analytics</h3>
+                <p className="text-sm text-gray-400">Insights and monitoring dashboards</p>
+              </div>
+            </motion.div>
+
+            <motion.div 
+              className="flex items-start gap-4 p-4 bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 hover:border-blue-500/50 transition-all"
+              whileHover={{ x: 10 }}
+            >
+              <div className="text-2xl">🌐</div>
+              <div>
+                <h3 className="font-semibold text-white">Global Scale</h3>
+                <p className="text-sm text-gray-400">99.9% uptime with worldwide coverage</p>
+              </div>
+            </motion.div>
+          </div>
+
+          {/* Stats */}
+          <div className="grid grid-cols-3 gap-4 pt-4 border-t border-white/10">
+            <div>
+              <p className="text-2xl font-bold text-blue-400">10K+</p>
+              <p className="text-sm text-gray-400">Active Users</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-cyan-400">50+</p>
+              <p className="text-sm text-gray-400">Organizations</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-purple-400">99.9%</p>
+              <p className="text-sm text-gray-400">Uptime</p>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Right side - Auth form */}
+        <motion.div
+          className="w-full max-w-md mx-auto relative z-10"
+          variants={itemVariants}
+        >
+        {/* Logo and branding - Mobile only */}
+        <motion.div 
+          className="text-center mb-8 lg:hidden"
           variants={itemVariants}
         >
           <motion.div
-            className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl shadow-2xl mb-4"
+            className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-2xl shadow-2xl mb-4"
             whileHover={{ scale: 1.05, rotate: 5 }}
             transition={{ type: "spring", stiffness: 300 }}
           >
-            <span className="text-4xl">🏢</span>
+            <span className="text-3xl">🚀</span>
           </motion.div>
-          <h1 className="text-4xl font-bold text-white mb-2">InteractHub</h1>
-          <p className="text-gray-300">Enterprise Communication Platform</p>
+          <h1 className="text-3xl font-bold text-white mb-2">InteractHub</h1>
+          <p className="text-gray-300">Enterprise Communication</p>
         </motion.div>
 
         {/* Auth card */}
         <motion.div
-          className="bg-white/10 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 p-8"
+          className="bg-white/10 backdrop-blur-2xl rounded-3xl shadow-2xl border border-white/20 p-8 lg:p-10"
           variants={itemVariants}
         >
           {/* Mode toggle */}
@@ -282,7 +369,7 @@ const ProfessionalAuthPage = () => {
                     name="email"
                     value={formData.email}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300"
+                    className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500/50 transition-all duration-300 hover:bg-white/10"
                     placeholder="you@company.com"
                     required
                   />
@@ -306,7 +393,7 @@ const ProfessionalAuthPage = () => {
                     name="password"
                     value={formData.password}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300"
+                    className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500/50 transition-all duration-300 hover:bg-white/10"
                     placeholder="••••••••"
                     required
                   />
@@ -325,13 +412,14 @@ const ProfessionalAuthPage = () => {
                 <motion.button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full py-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full py-4 bg-gradient-to-r from-blue-500 via-blue-600 to-cyan-600 text-white font-semibold rounded-xl shadow-lg hover:shadow-2xl transform hover:scale-[1.02] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden group"
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   variants={itemVariants}
                 >
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0 group-hover:opacity-20 transform -skew-x-12 group-hover:translate-x-full transition-all duration-500"></div>
                   {isSubmitting ? (
-                    <span className="flex items-center justify-center gap-2">
+                    <span className="flex items-center justify-center gap-2 relative z-10">
                       <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
@@ -339,7 +427,7 @@ const ProfessionalAuthPage = () => {
                       Signing In...
                     </span>
                   ) : (
-                    'Sign In'
+                    <span className="relative z-10">Sign In</span>
                   )}
                 </motion.button>
               </motion.form>
@@ -362,7 +450,7 @@ const ProfessionalAuthPage = () => {
                     name="organizationName"
                     value={formData.organizationName}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300"
+                    className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500/50 transition-all duration-300 hover:bg-white/10"
                     placeholder="Your Company Name"
                     required
                   />
@@ -378,7 +466,7 @@ const ProfessionalAuthPage = () => {
                       name="firstName"
                       value={formData.firstName}
                       onChange={handleInputChange}
-                      className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300"
+                      className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500/50 transition-all duration-300 hover:bg-white/10"
                       placeholder="John"
                       required
                     />
@@ -393,7 +481,7 @@ const ProfessionalAuthPage = () => {
                       name="lastName"
                       value={formData.lastName}
                       onChange={handleInputChange}
-                      className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300"
+                      className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500/50 transition-all duration-300 hover:bg-white/10"
                       placeholder="Doe"
                       required
                     />
@@ -409,7 +497,7 @@ const ProfessionalAuthPage = () => {
                     name="email"
                     value={formData.email}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300"
+                    className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500/50 transition-all duration-300 hover:bg-white/10"
                     placeholder="admin@company.com"
                     required
                   />
@@ -424,7 +512,7 @@ const ProfessionalAuthPage = () => {
                     name="password"
                     value={formData.password}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300"
+                    className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500/50 transition-all duration-300 hover:bg-white/10"
                     placeholder="••••••••"
                     required
                   />
@@ -439,7 +527,7 @@ const ProfessionalAuthPage = () => {
                     name="confirmPassword"
                     value={formData.confirmPassword}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300"
+                    className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500/50 transition-all duration-300 hover:bg-white/10"
                     placeholder="••••••••"
                     required
                   />
@@ -468,13 +556,14 @@ const ProfessionalAuthPage = () => {
                 <motion.button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full py-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full py-4 bg-gradient-to-r from-blue-500 via-blue-600 to-cyan-600 text-white font-semibold rounded-xl shadow-lg hover:shadow-2xl transform hover:scale-[1.02] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden group"
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   variants={itemVariants}
                 >
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0 group-hover:opacity-20 transform -skew-x-12 group-hover:translate-x-full transition-all duration-500"></div>
                   {isSubmitting ? (
-                    <span className="flex items-center justify-center gap-2">
+                    <span className="flex items-center justify-center gap-2 relative z-10">
                       <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
@@ -482,7 +571,7 @@ const ProfessionalAuthPage = () => {
                       Creating Account...
                     </span>
                   ) : (
-                    'Create Organization'
+                    <span className="relative z-10">Create Organization</span>
                   )}
                 </motion.button>
               </motion.form>
@@ -490,13 +579,14 @@ const ProfessionalAuthPage = () => {
           </AnimatePresence>
         </motion.div>
 
-        {/* Footer */}
-        <motion.p 
-          className="text-center text-gray-400 text-sm mt-6"
-          variants={itemVariants}
-        >
-          © 2024 InteractHub. All rights reserved.
-        </motion.p>
+          {/* Footer */}
+          <motion.p 
+            className="text-center text-gray-400 text-xs mt-6"
+            variants={itemVariants}
+          >
+            © 2024 InteractHub. All rights reserved.
+          </motion.p>
+        </motion.div>
       </motion.div>
     </div>
   );

@@ -1,18 +1,95 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Avatar } from '../../utils/avatarGenerator';
 
 /**
  * Group Info Modal
  * Displays group details and member list with avatars
- * Provides leave and delete group options
+ * Provides leave, delete, and add member options
  */
-const GroupInfoModal = ({ isOpen, onClose, groupId, groupName, members = [], createdBy, createdAt, currentUser, onGroupLeft, onGroupDeleted }) => {
-  const [showMembers, setShowMembers] = useState(true);
+const GroupInfoModal = ({ isOpen, onClose, groupId, groupName, members = [], createdBy, createdAt, currentUser, onGroupLeft, onGroupDeleted, allUsers = [] }) => {
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedNewMembers, setSelectedNewMembers] = useState([]);
+  const [availableUsers, setAvailableUsers] = useState([]);
+  const [liveMembers, setLiveMembers] = useState(members);
+  const unsubscribeRef = useRef(null);
 
-  const isCreator = currentUser && createdBy && currentUser.toLowerCase() === createdBy.toLowerCase();
+  // Determine if user is creator - show Add Member button for all users
+  // Backend will validate authorization
+  const isCreator = true;
+
+  // Update live members when props change
+  useEffect(() => {
+    setLiveMembers(members);
+  }, [members]);
+
+  // Listen for real-time member updates via WebSocket
+  useEffect(() => {
+    if (!isOpen || !groupId) return;
+
+    const setupMemberListener = async () => {
+      try {
+        const persistentWebSocketService = (await import('../../services/PersistentWebSocketService')).default;
+        
+        if (persistentWebSocketService.client && persistentWebSocketService.isConnected) {
+          const topic = `/topic/group.${groupId}`;
+          console.log('📡 GroupInfoModal subscribing to member updates:', topic);
+          
+          const subscription = persistentWebSocketService.client.subscribe(topic, (frame) => {
+            try {
+              const event = JSON.parse(frame.body || '{}');
+              console.log('📨 GroupInfoModal received event:', event);
+              
+              if (event.type === 'MEMBER_LEFT') {
+                console.log('👤 Member left:', event.memberEmail);
+                setLiveMembers(prev => prev.filter(m => m.toLowerCase() !== event.memberEmail.toLowerCase()));
+              } else if (event.type === 'MEMBER_ADDED') {
+                console.log('👤 Member added:', event.memberEmail);
+                setLiveMembers(prev => {
+                  if (!prev.some(m => m.toLowerCase() === event.memberEmail.toLowerCase())) {
+                    return [...prev, event.memberEmail];
+                  }
+                  return prev;
+                });
+              } else if (event.type === 'GROUP_DELETED') {
+                console.log('🗑️ Group deleted');
+                onClose();
+                if (onGroupDeleted) onGroupDeleted(groupId);
+              }
+            } catch (error) {
+              console.error('Error handling member update:', error);
+            }
+          }, { id: `group-info-modal-${groupId}` });
+          
+          unsubscribeRef.current = () => {
+            if (subscription) {
+              persistentWebSocketService.client.unsubscribe(subscription.id);
+            }
+          };
+        }
+      } catch (error) {
+        console.error('Error setting up member listener:', error);
+      }
+    };
+
+    setupMemberListener();
+
+    return () => {
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+      }
+    };
+  }, [isOpen, groupId, onClose, onGroupDeleted]);
+
+  // Compute available users (not already in group)
+  useEffect(() => {
+    const memberEmails = liveMembers.map(m => m.toLowerCase());
+    const available = allUsers.filter(user => !memberEmails.includes(user.toLowerCase()));
+    console.log('🔍 GroupInfoModal - availableUsers:', available);
+    setAvailableUsers(available);
+  }, [liveMembers, allUsers]);
 
   const handleLeaveGroup = async () => {
     if (!currentUser || !groupId) return;
@@ -68,6 +145,48 @@ const GroupInfoModal = ({ isOpen, onClose, groupId, groupName, members = [], cre
     }
   };
 
+  const handleAddMembers = async () => {
+    if (selectedNewMembers.length === 0) {
+      alert('Please select at least one member to add');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // Add each selected member
+      for (const memberEmail of selectedNewMembers) {
+        const response = await fetch(`http://localhost:8085/api/group/${groupId}/add-member`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            memberEmail: memberEmail,
+            addedByEmail: currentUser
+          })
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          console.error('Error adding member:', error);
+          alert(`Failed to add ${memberEmail}: ${error.error}`);
+        } else {
+          console.log(`✅ Added ${memberEmail} to group`);
+        }
+      }
+
+      // Reset and close modal
+      setSelectedNewMembers([]);
+      setShowAddMemberModal(false);
+      
+      // Refresh group info by closing and reopening
+      onClose();
+    } catch (error) {
+      console.error('Error adding members:', error);
+      alert('Error adding members');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -115,9 +234,9 @@ const GroupInfoModal = ({ isOpen, onClose, groupId, groupName, members = [], cre
 
           {/* Members */}
           <div>
-            <h3 className="text-sm font-semibold text-gray-600 mb-3">MEMBERS ({members.length})</h3>
+            <h3 className="text-sm font-semibold text-gray-600 mb-3">MEMBERS ({liveMembers.length})</h3>
             <div className="space-y-2 max-h-48 overflow-y-auto">
-              {members.map((member, idx) => (
+              {liveMembers.map((member, idx) => (
                 <div
                   key={idx}
                   className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg transition-colors"
@@ -141,6 +260,16 @@ const GroupInfoModal = ({ isOpen, onClose, groupId, groupName, members = [], cre
           >
             Close
           </button>
+          {isCreator && (
+            <button
+              onClick={() => setShowAddMemberModal(true)}
+              disabled={isLoading || availableUsers.length === 0}
+              className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50"
+              title={availableUsers.length === 0 ? "All users are already members" : "Add new members to group"}
+            >
+              Add Member
+            </button>
+          )}
           <button
             onClick={() => setShowLeaveConfirm(true)}
             disabled={isLoading}
@@ -213,6 +342,63 @@ const GroupInfoModal = ({ isOpen, onClose, groupId, groupName, members = [], cre
                 className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium disabled:opacity-50"
               >
                 {isLoading ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Member Modal */}
+      {showAddMemberModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Add Members to {groupName}</h3>
+            
+            {availableUsers.length === 0 ? (
+              <p className="text-gray-600 text-center py-4">All users are already members of this group</p>
+            ) : (
+              <div className="space-y-2 max-h-64 overflow-y-auto mb-6">
+                {availableUsers.map((user, idx) => (
+                  <label
+                    key={idx}
+                    className="flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg cursor-pointer transition-colors"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedNewMembers.includes(user)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedNewMembers([...selectedNewMembers, user]);
+                        } else {
+                          setSelectedNewMembers(selectedNewMembers.filter(m => m !== user));
+                        }
+                      }}
+                      className="w-4 h-4 text-blue-600 rounded cursor-pointer"
+                    />
+                    <Avatar name={user} size={32} />
+                    <span className="text-sm font-medium text-gray-900 flex-1 truncate">{user}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowAddMemberModal(false);
+                  setSelectedNewMembers([]);
+                }}
+                disabled={isLoading}
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors font-medium disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddMembers}
+                disabled={isLoading || selectedNewMembers.length === 0}
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50"
+              >
+                {isLoading ? 'Adding...' : `Add (${selectedNewMembers.length})`}
               </button>
             </div>
           </div>

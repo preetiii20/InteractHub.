@@ -2,10 +2,19 @@ import React, { useState } from 'react';
 import { authHelpers } from '../../config/auth';
 import apiConfig from '../../config/api';
 
-const AnnouncementList = ({ items, onLike, onComment, onDelete, drafts, setDrafts, userLikes = {}, likeCounts = {}, comments = {}, stompClient = null }) => {
+const AnnouncementList = ({ items, onLike, onComment, onDelete, drafts, setDrafts, userLikes = {}, likeCounts = {}, comments = {}, stompClient = null, theme = 'blue' }) => {
+  // Theme color mappings
+  const themeColors = {
+    blue: { primary: 'blue', tab: 'blue', bg: 'from-blue-50 to-indigo-50', border: 'border-blue-200', button: 'bg-blue-600 hover:bg-blue-700', text: 'text-blue-600', liked: 'bg-blue-500 hover:bg-blue-600' },
+    green: { primary: 'green', tab: 'green', bg: 'from-green-50 to-emerald-50', border: 'border-green-200', button: 'bg-green-600 hover:bg-green-700', text: 'text-green-600', liked: 'bg-green-500 hover:bg-green-600' },
+    rose: { primary: 'rose', tab: 'rose', bg: 'from-rose-50 to-pink-50', border: 'border-rose-200', button: 'bg-rose-600 hover:bg-rose-700', text: 'text-rose-600', liked: 'bg-rose-500 hover:bg-rose-700' },
+    purple: { primary: 'purple', tab: 'purple', bg: 'from-purple-50 to-violet-50', border: 'border-purple-200', button: 'bg-purple-600 hover:bg-purple-700', text: 'text-purple-600', liked: 'bg-purple-500 hover:bg-purple-700' }
+  };
+  const colors = themeColors[theme] || themeColors.blue;
   const [showAllComments, setShowAllComments] = useState({});
   const [showLikes, setShowLikes] = useState({});
   const [likedUsers, setLikedUsers] = useState({});
+  const [activeTab, setActiveTab] = useState('sent');
 
   const fetchLikedUsers = async (announcementId) => {
     try {
@@ -78,15 +87,23 @@ const AnnouncementList = ({ items, onLike, onComment, onDelete, drafts, setDraft
     };
   }, [items, stompClient]);
 
-  return (
-    <div className="space-y-4">
-      {Array.isArray(items) && items.length > 0 ? items.map((ann) => {
-        const name = (ann.createdByName && String(ann.createdByName).trim()) || 'User';
-        const when = ann.createdAt ? new Date(ann.createdAt).toLocaleString() : '';
-        const currentUser = authHelpers.getUserName() || 'User';
-        const canDelete = onDelete && name === currentUser;
-        return (
-          <div key={ann.id} className={`p-4 rounded-xl shadow-md bg-white border-l-4 ${ann.type === 'URGENT' ? 'border-red-500' : 'border-indigo-500'}`}>
+  // Separate announcements into sent and received
+  const currentUser = authHelpers.getUserName() || 'User';
+  const sentAnnouncements = Array.isArray(items) ? items.filter(ann => {
+    const name = (ann.createdByName && String(ann.createdByName).trim()) || 'User';
+    return name === currentUser;
+  }) : [];
+  const receivedAnnouncements = Array.isArray(items) ? items.filter(ann => {
+    const name = (ann.createdByName && String(ann.createdByName).trim()) || 'User';
+    return name !== currentUser;
+  }) : [];
+
+  const renderAnnouncementCard = (ann) => {
+    const name = (ann.createdByName && String(ann.createdByName).trim()) || 'User';
+    const when = ann.createdAt ? new Date(ann.createdAt).toLocaleString() : '';
+    const canDelete = onDelete && name === currentUser;
+    return (
+      <div key={ann.id} className={`p-4 rounded-xl shadow-md bg-white border-l-4 ${ann.type === 'URGENT' ? 'border-red-500' : 'border-indigo-500'}`}>
             <div className="flex items-center gap-2">
               <div className="font-bold text-lg text-gray-800">{ann.title}</div>
               <span className="text-[11px] px-2 py-0.5 rounded bg-gray-100 text-gray-700">Received</span>
@@ -100,7 +117,7 @@ const AnnouncementList = ({ items, onLike, onComment, onDelete, drafts, setDraft
                   onClick={() => onLike(ann)} 
                   className={`px-3 py-1 rounded text-sm ${
                     userLikes[ann.id] 
-                      ? 'bg-blue-500 text-white hover:bg-blue-600' 
+                      ? `${colors.liked} text-white` 
                       : 'bg-gray-100 hover:bg-gray-200'
                   }`}
                 >
@@ -110,7 +127,7 @@ const AnnouncementList = ({ items, onLike, onComment, onDelete, drafts, setDraft
                   {(likeCounts[ann.id] || 0) > 0 && (
                     <button 
                       onClick={() => toggleShowLikes(ann.id)} 
-                      className="px-3 py-1 rounded text-sm bg-green-100 text-green-700 hover:bg-green-200"
+                      className={`px-3 py-1 rounded text-sm bg-${colors.primary}-100 text-${colors.primary}-700 hover:bg-${colors.primary}-200`}
                     >
                       👥 {showLikes[ann.id] ? 'Hide Likes' : 'View Likes'}
                     </button>
@@ -124,7 +141,7 @@ const AnnouncementList = ({ items, onLike, onComment, onDelete, drafts, setDraft
                     onChange={e => setDrafts(prev => ({ ...prev, [ann.id]: e.target.value }))}
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); onComment(ann, drafts?.[ann.id] || ''); } }}
                   />
-                  <button onClick={() => onComment(ann, drafts?.[ann.id] || '')} className="px-3 py-1 bg-blue-600 text-white rounded text-sm">Comment</button>
+                  <button onClick={() => onComment(ann, drafts?.[ann.id] || '')} className={`px-3 py-1 ${colors.button} text-white rounded text-sm`}>Comment</button>
                 </>
               )}
               {canDelete && (
@@ -201,8 +218,65 @@ const AnnouncementList = ({ items, onLike, onComment, onDelete, drafts, setDraft
               </div>
             )}
           </div>
-        );
-      }) : <p className="text-gray-500">No announcements found.</p>}
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Tab Navigation */}
+      <div className="flex gap-2 border-b border-gray-300">
+        <button
+          onClick={() => setActiveTab('sent')}
+          className={`px-6 py-3 font-semibold transition-all ${
+            activeTab === 'sent'
+              ? `text-${colors.primary}-600 border-b-2 border-${colors.primary}-600 bg-${colors.primary}-50`
+              : 'text-gray-600 hover:text-gray-800'
+          }`}
+        >
+          📤 Sent by Me ({sentAnnouncements.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('received')}
+          className={`px-6 py-3 font-semibold transition-all ${
+            activeTab === 'received'
+              ? `text-${colors.primary}-600 border-b-2 border-${colors.primary}-600 bg-${colors.primary}-50`
+              : 'text-gray-600 hover:text-gray-800'
+          }`}
+        >
+          📥 Received ({receivedAnnouncements.length})
+        </button>
+      </div>
+
+      {/* Sent by Me Tab Content */}
+      {activeTab === 'sent' && (
+        <div className={`bg-gradient-to-r ${colors.bg} p-6 rounded-xl border ${colors.border}`}>
+          {sentAnnouncements.length > 0 ? (
+            <div className="space-y-4">
+              {sentAnnouncements.map(ann => renderAnnouncementCard(ann))}
+            </div>
+          ) : (
+            <p className="text-gray-500 text-center py-8">No announcements sent by you.</p>
+          )}
+        </div>
+      )}
+
+      {/* Received Tab Content */}
+      {activeTab === 'received' && (
+        <div className={`bg-gradient-to-r ${colors.bg} p-6 rounded-xl border ${colors.border}`}>
+          {receivedAnnouncements.length > 0 ? (
+            <div className="space-y-4">
+              {receivedAnnouncements.map(ann => renderAnnouncementCard(ann))}
+            </div>
+          ) : (
+            <p className="text-gray-500 text-center py-8">No announcements received.</p>
+          )}
+        </div>
+      )}
+
+      {/* No Announcements at All */}
+      {sentAnnouncements.length === 0 && receivedAnnouncements.length === 0 && (
+        <p className="text-gray-500 text-center py-8">No announcements found.</p>
+      )}
     </div>
   );
 };
