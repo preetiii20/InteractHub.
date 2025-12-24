@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { motion } from 'framer-motion';
 import apiConfig from '../../config/api';
+import apiClient from '../../services/apiClient';
 
 const ADMIN_SERVICE_URL = `${apiConfig.adminService}`;
 const CHAT_SERVICE_URL = `${apiConfig.chatService}`;
@@ -21,10 +22,13 @@ const AdminHistoricalComms = () => {
 
     const fetchFullHistory = async () => {
         try {
+            const userEmail = localStorage.getItem('userEmail');
+            const headers = userEmail ? { 'X-User-Email': userEmail } : {};
+            
             // 1. Fetch static Poll/Announcement history (Admin DB)
             const [announcementsRes, pollsRes] = await Promise.all([
-                axios.get(`${ADMIN_SERVICE_URL}/announcements`),
-                axios.get(`${ADMIN_SERVICE_URL}/polls`)
+                apiClient.get(`/admin/announcements`, { headers }),
+                apiClient.get(`/admin/polls`, { headers })
             ]);
 
             const announcements = announcementsRes.data.map(item => ({ 
@@ -36,7 +40,7 @@ const AdminHistoricalComms = () => {
 
             // 2. Fetch interaction history (comments/votes) from Chat Service DB
             // NOTE: This endpoint needs to be created in ChatRestController.java
-            const interactionsRes = await axios.get(`${CHAT_SERVICE_URL}/interactions/history/all`);
+            const interactionsRes = await apiClient.get(`/chat/interactions/history/all`, { headers });
             const interactions = interactionsRes.data.map(item => ({
                 ...item, type: 'Interaction', date: item.createdAt, entityId: item.entityId
             }));

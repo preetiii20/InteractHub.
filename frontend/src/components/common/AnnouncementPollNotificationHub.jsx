@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 import apiConfig from '../../config/api';
-import NotificationService from '../../services/NotificationService';
+import notificationService from '../../services/NotificationService';
 import globalNotificationService from '../../services/GlobalNotificationService';
 
 /**
@@ -41,7 +41,7 @@ const AnnouncementPollNotificationHub = ({ onAnnouncementReceived, onPollReceive
     console.log('📢 Announcement received:', announcement);
 
     // Show browser notification
-    NotificationService.showAnnouncementNotification(
+    notificationService.showAnnouncementNotification(
       announcement.title || 'New Announcement',
       announcement.content,
       () => {
@@ -73,7 +73,7 @@ const AnnouncementPollNotificationHub = ({ onAnnouncementReceived, onPollReceive
     console.log('📊 Poll received:', poll);
 
     // Show browser notification
-    NotificationService.showPollNotification(
+    notificationService.showPollNotification(
       poll.question,
       () => {
         window.focus();
@@ -121,9 +121,11 @@ const AnnouncementPollNotificationHub = ({ onAnnouncementReceived, onPollReceive
               lastAnnouncementId.current = announcement.id;
             }
           });
+        } else {
+          console.log('ℹ️ Announcements endpoint returned:', response.status);
         }
       } catch (error) {
-        console.error('❌ Error fetching announcements:', error);
+        console.log('ℹ️ Could not fetch announcements (endpoint may not exist):', error.message);
       }
     };
 
@@ -142,9 +144,11 @@ const AnnouncementPollNotificationHub = ({ onAnnouncementReceived, onPollReceive
               lastPollId.current = poll.id;
             }
           });
+        } else {
+          console.log('ℹ️ Polls endpoint returned:', response.status);
         }
       } catch (error) {
-        console.error('❌ Error fetching polls:', error);
+        console.log('ℹ️ Could not fetch polls (endpoint may not exist):', error.message);
       }
     };
 
@@ -163,7 +167,7 @@ const AnnouncementPollNotificationHub = ({ onAnnouncementReceived, onPollReceive
 
   // Update browser tab title with unread count
   useEffect(() => {
-    NotificationService.updateTabTitle(unreadCount);
+    notificationService.updateTabTitle(unreadCount);
   }, [unreadCount]);
 
   return (

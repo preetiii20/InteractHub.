@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { motion } from 'framer-motion';
+import apiClient from '../../services/apiClient';
 
 const ADMIN_SERVICE_URL = 'http://localhost:8081/api';
 
@@ -26,18 +27,20 @@ const UserManagement = () => {
       // Get the admin's organizationId from localStorage (where authHelpers stores it)
       const user = JSON.parse(localStorage.getItem('interacthub_user') || sessionStorage.getItem('interacthub_session_user') || '{}');
       const organizationId = user.organizationId;
+      const userEmail = localStorage.getItem('userEmail');
+      const headers = userEmail ? { 'X-User-Email': userEmail } : {};
       
       console.log('DEBUG: User from storage:', user);
       console.log('DEBUG: OrganizationId:', organizationId);
       
       // Add organizationId as query parameter to filter users
       const url = organizationId 
-        ? `${ADMIN_SERVICE_URL}/admin/users/all?organizationId=${organizationId}`
-        : `${ADMIN_SERVICE_URL}/admin/users/all`;
+        ? `/admin/users/all?organizationId=${organizationId}`
+        : `/admin/users/all`;
       
       console.log('DEBUG: Fetching URL:', url);
       
-      const response = await axios.get(url);
+      const response = await apiClient.get(url, { headers });
       // Handle both paginated and non-paginated responses
       if (Array.isArray(response.data)) {
         setUsers(response.data);
@@ -61,6 +64,8 @@ const UserManagement = () => {
       // Get the admin's organizationId from localStorage (where authHelpers stores it)
       const user = JSON.parse(localStorage.getItem('interacthub_user') || sessionStorage.getItem('interacthub_session_user') || '{}');
       const organizationId = user.organizationId;
+      const userEmail = localStorage.getItem('userEmail');
+      const headers = userEmail ? { 'X-User-Email': userEmail } : {};
       
       console.log('DEBUG: Creating user with organizationId:', organizationId);
       
@@ -70,7 +75,7 @@ const UserManagement = () => {
         organizationId: organizationId ? parseInt(organizationId) : null
       };
       
-      await axios.post(`${ADMIN_SERVICE_URL}/admin/users`, userToCreate);
+      await apiClient.post(`/admin/users`, userToCreate, { headers });
       setMessage({ type: 'success', text: `User ${newUser.email} created! Onboarding email sent (mocked).` });
       setIsModalOpen(false);
       fetchUsers(); 
@@ -82,7 +87,9 @@ const UserManagement = () => {
   const handleDelete = async (id) => {
     if (!window.confirm(`Are you sure you want to delete user ID ${id}?`)) return;
     try {
-      await axios.delete(`${ADMIN_SERVICE_URL}/admin/users/${id}`);
+      const userEmail = localStorage.getItem('userEmail');
+      const headers = userEmail ? { 'X-User-Email': userEmail } : {};
+      await apiClient.delete(`/admin/users/${id}`, { headers });
       setMessage({ type: 'success', text: `User ID ${id} deleted.` });
       fetchUsers();
     } catch (error) {

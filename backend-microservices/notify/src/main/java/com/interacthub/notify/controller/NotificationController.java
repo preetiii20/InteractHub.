@@ -30,4 +30,44 @@ public class NotificationController {
             return ResponseEntity.internalServerError().body(Map.of("error", "Failed to process notification request."));
         }
     }
+
+    // New endpoint for meeting invitations
+    @PostMapping("/send")
+    public ResponseEntity<?> sendMeetingInvitation(@RequestBody Map<String, Object> payload) {
+        try {
+            if (!payload.containsKey("recipientEmail")) {
+                return ResponseEntity.badRequest().body("Missing recipient email.");
+            }
+            
+            String recipientEmail = (String) payload.get("recipientEmail");
+            String meetingTitle = (String) payload.getOrDefault("meetingTitle", "Meeting");
+            String meetingDate = (String) payload.getOrDefault("meetingDate", "");
+            String meetingTime = (String) payload.getOrDefault("meetingTime", "");
+            String meetingLink = (String) payload.getOrDefault("meetingLink", "");
+            String organizer = (String) payload.getOrDefault("organizer", "");
+            String description = (String) payload.getOrDefault("description", "");
+            
+            // Log the meeting invitation
+            System.out.println("📧 Meeting Invitation Notification:");
+            System.out.println("   To: " + recipientEmail);
+            System.out.println("   Meeting: " + meetingTitle);
+            System.out.println("   Date: " + meetingDate);
+            System.out.println("   Time: " + meetingTime);
+            System.out.println("   Link: " + meetingLink);
+            System.out.println("   Organizer: " + organizer);
+            
+            // Send email notification
+            emailService.sendMeetingInvitation(payload);
+            
+            return ResponseEntity.ok(Map.of(
+                "message", "Meeting invitation sent successfully to " + recipientEmail,
+                "recipientEmail", recipientEmail,
+                "meetingTitle", meetingTitle
+            ));
+        } catch (Exception e) {
+            System.err.println("❌ Error processing meeting invitation: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().body(Map.of("error", "Failed to send meeting invitation."));
+        }
+    }
 }

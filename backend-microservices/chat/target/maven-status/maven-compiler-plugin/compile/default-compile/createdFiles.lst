@@ -36,6 +36,7 @@ com\interacthub\chat\controller\ChatRestController.class
 com\interacthub\chat\controller\SignalController.class
 com\interacthub\chat\model\GroupMessage.class
 com\interacthub\chat\config\WebCorsConfig.class
+com\interacthub\chat\service\UserService.class
 com\interacthub\chat\controller\DirectChatController.class
 com\interacthub\chat\repository\PollVoteRepository.class
 com\interacthub\chat\model\GroupMember.class

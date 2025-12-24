@@ -11,6 +11,7 @@ import org.springframework.web.client.RestTemplate;
 
 import com.interacthub.admin_service.model.User;
 import com.interacthub.admin_service.repository.UserRepository;
+import com.interacthub.admin_service.util.OrganizationValidator;
 
 @RestController
 @RequestMapping("/api/admin/dashboard")
@@ -22,6 +23,9 @@ public class AdminDashboardController {
     
     @Autowired
     private RestTemplate restTemplate;
+    
+    @Autowired
+    private OrganizationValidator organizationValidator;
     
     @Value("${manager.service.url:http://localhost:8083/api/manager}")
     private String managerServiceUrl;
@@ -40,8 +44,9 @@ public class AdminDashboardController {
         try {
             Map<String, Object> stats = new HashMap<>();
             
-            // User statistics
+            // User statistics (all users - no organization filtering)
             List<User> allUsers = userRepository.findAll();
+            
             stats.put("totalUsers", allUsers.size());
             stats.put("activeUsers", allUsers.stream().filter(User::getIsActive).count());
             stats.put("inactiveUsers", allUsers.stream().filter(u -> !u.getIsActive()).count());
@@ -76,7 +81,7 @@ public class AdminDashboardController {
             
             return ResponseEntity.ok(stats);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            return ResponseEntity.status(403).body(Map.of("error", "Access denied"));
         }
     }
     
@@ -87,6 +92,7 @@ public class AdminDashboardController {
     public ResponseEntity<?> getAllManagers() {
         try {
             List<User> managers = userRepository.findByRole(User.Role.MANAGER);
+            
             List<Map<String, Object>> managerDetails = new ArrayList<>();
             
             for (User manager : managers) {
@@ -124,7 +130,7 @@ public class AdminDashboardController {
             
             return ResponseEntity.ok(managerDetails);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            return ResponseEntity.status(403).body(Map.of("error", "Access denied"));
         }
     }
     
@@ -135,6 +141,7 @@ public class AdminDashboardController {
     public ResponseEntity<?> getHROverview() {
         try {
             List<User> hrUsers = userRepository.findByRole(User.Role.HR);
+            
             Map<String, Object> hrOverview = new HashMap<>();
             
             hrOverview.put("hrCount", hrUsers.size());
@@ -149,25 +156,27 @@ public class AdminDashboardController {
                 hrData.put("isActive", hr.getIsActive());
                 hrData.put("department", hr.getDepartmentId() != null ? hr.getDepartmentId() : "HR Department");
                 
-                // Calculate real metrics from database
+                // Calculate real metrics from database (all users - no filtering)
                 Map<String, Object> metrics = new HashMap<>();
                 
-                // Count users created (onboarded) - all users created after this HR user
-                long onboardedCount = userRepository.findAll().stream()
+                List<User> orgUsers = userRepository.findAll();
+                
+                // Count users created (onboarded)
+                long onboardedCount = orgUsers.stream()
                     .filter(u -> u.getCreatedAt() != null && hr.getCreatedAt() != null)
                     .filter(u -> u.getCreatedAt().isAfter(hr.getCreatedAt()))
                     .count();
                 metrics.put("onboarded", onboardedCount);
                 
-                // Count active employees (potential attendance tracking)
-                long activeEmployees = userRepository.findAll().stream()
+                // Count active employees
+                long activeEmployees = orgUsers.stream()
                     .filter(User::getIsActive)
                     .filter(u -> u.getRole() == User.Role.EMPLOYEE)
                     .count();
                 metrics.put("attendance", activeEmployees);
                 
-                // Count pending items (users awaiting activation)
-                long pendingUsers = userRepository.findAll().stream()
+                // Count pending items
+                long pendingUsers = orgUsers.stream()
                     .filter(u -> !u.getIsActive())
                     .count();
                 metrics.put("pendingLeaves", pendingUsers);
@@ -178,22 +187,24 @@ public class AdminDashboardController {
             
             hrOverview.put("hrUsers", hrUserDetails);
             
-            // Real leave statistics from database
-            long totalUsers = userRepository.count();
-            long activeUsers = userRepository.findAll().stream().filter(User::getIsActive).count();
+            // Real leave statistics from database (all users - no filtering)
+            List<User> orgUsers = userRepository.findAll();
+            
+            long totalUsers = orgUsers.size();
+            long activeUsers = orgUsers.stream().filter(User::getIsActive).count();
             long inactiveUsers = totalUsers - activeUsers;
             
             Map<String, Object> leaveStats = new HashMap<>();
-            leaveStats.put("pending", inactiveUsers); // Inactive users as "pending"
-            leaveStats.put("approved", activeUsers);  // Active users as "approved"
-            leaveStats.put("rejected", 0);            // No rejected concept yet
+            leaveStats.put("pending", inactiveUsers);
+            leaveStats.put("approved", activeUsers);
+            leaveStats.put("rejected", 0);
             leaveStats.put("total", totalUsers);
             
             hrOverview.put("leaveStats", leaveStats);
             
             // Pending leave requests (inactive users needing activation)
             List<Map<String, Object>> pendingLeaves = new ArrayList<>();
-            List<User> inactiveUsersList = userRepository.findAll().stream()
+            List<User> inactiveUsersList = orgUsers.stream()
                 .filter(u -> !u.getIsActive())
                 .limit(10)
                 .collect(Collectors.toList());
@@ -213,7 +224,7 @@ public class AdminDashboardController {
             return ResponseEntity.ok(hrOverview);
         } catch (Exception e) {
             e.printStackTrace();
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            return ResponseEntity.status(403).body(Map.of("error", "Access denied"));
         }
     }
     
@@ -224,6 +235,7 @@ public class AdminDashboardController {
     public ResponseEntity<?> getAllEmployees() {
         try {
             List<User> employees = userRepository.findAll();
+            
             List<Map<String, Object>> employeeDetails = employees.stream().map(emp -> {
                 Map<String, Object> details = new HashMap<>();
                 details.put("id", emp.getId());
@@ -241,7 +253,7 @@ public class AdminDashboardController {
             
             return ResponseEntity.ok(employeeDetails);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            return ResponseEntity.status(403).body(Map.of("error", "Access denied"));
         }
     }
     
@@ -249,11 +261,12 @@ public class AdminDashboardController {
      * Get recent activities from database (real-time)
      */
     @GetMapping("/activities")
-    public ResponseEntity<?> getRecentActivities(@RequestParam(defaultValue = "20") int limit) {
+    public ResponseEntity<?> getRecentActivities(
+            @RequestParam(defaultValue = "20") int limit) {
         try {
             List<Map<String, Object>> activities = new ArrayList<>();
             
-            // Get recently created users
+            // Get recently created users (all users - no filtering)
             List<User> recentUsers = userRepository.findAll().stream()
                 .filter(u -> u.getCreatedAt() != null)
                 .sorted((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()))
@@ -272,8 +285,9 @@ public class AdminDashboardController {
             }
             
             // Get recently activated/deactivated users
-            List<User> allUsers = userRepository.findAll();
-            for (User user : allUsers.stream().limit(10).collect(Collectors.toList())) {
+            List<User> allOrgUsers = userRepository.findAll();
+            
+            for (User user : allOrgUsers.stream().limit(10).collect(Collectors.toList())) {
                 if (user.getUpdatedAt() != null && !user.getUpdatedAt().equals(user.getCreatedAt())) {
                     Map<String, Object> activity = new HashMap<>();
                     activity.put("icon", user.getIsActive() ? "✅" : "⏸️");
@@ -302,7 +316,7 @@ public class AdminDashboardController {
             return ResponseEntity.ok(activities);
         } catch (Exception e) {
             e.printStackTrace();
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            return ResponseEntity.status(403).body(Map.of("error", "Access denied"));
         }
     }
     
@@ -311,35 +325,39 @@ public class AdminDashboardController {
      */
     @GetMapping("/health")
     public ResponseEntity<?> getSystemHealth() {
-        Map<String, Object> health = new HashMap<>();
-        
-        // Check admin service
-        health.put("adminService", "UP");
-        
-        // Check manager service
         try {
-            restTemplate.getForEntity(managerServiceUrl + "/health", String.class);
-            health.put("managerService", "UP");
+            Map<String, Object> health = new HashMap<>();
+            
+            // Check admin service
+            health.put("adminService", "UP");
+            
+            // Check manager service
+            try {
+                restTemplate.getForEntity(managerServiceUrl + "/health", String.class);
+                health.put("managerService", "UP");
+            } catch (Exception e) {
+                health.put("managerService", "DOWN");
+            }
+            
+            // Check HR service
+            try {
+                restTemplate.getForEntity(hrServiceUrl + "/health", String.class);
+                health.put("hrService", "UP");
+            } catch (Exception e) {
+                health.put("hrService", "DOWN");
+            }
+            
+            // Check chat service
+            try {
+                restTemplate.getForEntity(chatServiceUrl + "/health", String.class);
+                health.put("chatService", "UP");
+            } catch (Exception e) {
+                health.put("chatService", "DOWN");
+            }
+            
+            return ResponseEntity.ok(health);
         } catch (Exception e) {
-            health.put("managerService", "DOWN");
+            return ResponseEntity.status(403).body(Map.of("error", "Access denied"));
         }
-        
-        // Check HR service
-        try {
-            restTemplate.getForEntity(hrServiceUrl + "/health", String.class);
-            health.put("hrService", "UP");
-        } catch (Exception e) {
-            health.put("hrService", "DOWN");
-        }
-        
-        // Check chat service
-        try {
-            restTemplate.getForEntity(chatServiceUrl + "/health", String.class);
-            health.put("chatService", "UP");
-        } catch (Exception e) {
-            health.put("chatService", "DOWN");
-        }
-        
-        return ResponseEntity.ok(health);
     }
 }

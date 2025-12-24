@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import axios from 'axios';
 import apiConfig from '../../config/api';
 import { authHelpers } from '../../config/auth';
+import CalendarComponent from '../common/CalendarComponent';
 
 const cardVariants = {
   hidden: { opacity: 0, y: 20 },
@@ -17,6 +18,7 @@ const ManagerDashboard = () => {
     pendingTasks: 0
   });
   const [recentActivities, setRecentActivities] = useState([]);
+  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -25,6 +27,18 @@ const ManagerDashboard = () => {
 
   const fetchDashboardData = async () => {
     try {
+      // Fetch users first for calendar
+      console.log('📡 Fetching users for Manager calendar...');
+      try {
+        const usersResponse = await axios.get('http://localhost:8081/api/admin/users/all');
+        if (usersResponse.data && Array.isArray(usersResponse.data)) {
+          setUsers(usersResponse.data);
+          console.log('✅ Users fetched for Manager calendar:', usersResponse.data.length);
+        }
+      } catch (userError) {
+        console.log('ℹ️ Could not fetch users for calendar:', userError.message);
+      }
+
       // Fetch manager-specific data from backend
       const managerId = authHelpers.getUserId();
       
@@ -117,7 +131,7 @@ const ManagerDashboard = () => {
 
   return (
     <motion.div 
-      className="space-y-6"
+      className="w-full space-y-6"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.5 }}
@@ -148,7 +162,7 @@ const ManagerDashboard = () => {
         </motion.div>
 
         <motion.div 
-          className="p-6 bg-white rounded-xl shadow-lg border-l-4 border-green-500"
+          className="p-6 bg-white rounded-xl shadow-lg border-l-4 border-blue-500"
           variants={cardVariants}
           initial="hidden"
           animate="visible"
@@ -157,7 +171,7 @@ const ManagerDashboard = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Active Projects</p>
-              <p className="text-3xl font-bold text-green-600">{stats.activeProjects}</p>
+              <p className="text-3xl font-bold text-blue-600">{stats.activeProjects}</p>
             </div>
             <div className="text-3xl">🚀</div>
           </div>
@@ -243,11 +257,11 @@ const ManagerDashboard = () => {
           
           <button 
             onClick={() => window.location.href = '/dashboard/manager/tasks'}
-            className="p-4 bg-green-50 hover:bg-green-100 rounded-lg border border-green-200 transition-colors cursor-pointer"
+            className="p-4 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition-colors cursor-pointer"
           >
             <div className="text-2xl mb-2">✅</div>
-            <div className="font-medium text-green-800">Task Management</div>
-            <div className="text-sm text-green-600">Assign & track tasks</div>
+            <div className="font-medium text-blue-800">Task Management</div>
+            <div className="text-sm text-blue-600">Assign & track tasks</div>
           </button>
           
           <button 
@@ -260,9 +274,28 @@ const ManagerDashboard = () => {
           </button>
         </div>
       </motion.div>
+
+      {/* Calendar Widget */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.6 }}
+      >
+        <CalendarComponent 
+          role="manager"
+          eventTypes={{
+            project: { bg: 'bg-blue-100', text: 'text-blue-700', badge: 'bg-blue-500', border: 'border-blue-300' },
+            deadline: { bg: 'bg-red-100', text: 'text-red-700', badge: 'bg-red-500', border: 'border-red-300' },
+            meeting: { bg: 'bg-purple-100', text: 'text-purple-700', badge: 'bg-purple-500', border: 'border-purple-300' },
+            milestone: { bg: 'bg-green-100', text: 'text-green-700', badge: 'bg-green-500', border: 'border-green-300' }
+          }}
+          canCreateGlobalEvents={false}
+          canScheduleMeetings={true}
+          userList={users}
+        />
+      </motion.div>
     </motion.div>
   );
 };
 
 export default ManagerDashboard;
-

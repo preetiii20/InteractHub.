@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Users, CheckCircle, Briefcase, Building2, Megaphone, BarChart3, Server, TrendingUp, Clock, Activity, Zap } from 'lucide-react';
+import { Users, CheckCircle, Briefcase, Building2, Megaphone, BarChart3, Server, TrendingUp, Clock, Zap } from 'lucide-react';
 import apiClient from '../../services/apiClient';
+import CalendarComponent from '../common/CalendarComponent';
 
 const cardVariants = {
   initial: { opacity: 0, y: 20 },
@@ -103,11 +104,20 @@ const StatCard = ({ title, value, icon, color, trend }) => {
 const AdminDashboard = () => {
   const [report, setReport] = useState({});
   const [loading, setLoading] = useState(true);
+  const [users, setUsers] = useState([]);
 
   useEffect(() => {
     const fetchReport = async () => {
       try {
-        // Fetch new admin dashboard data
+        console.log('📡 AdminDashboard: Fetching users from API...');
+        const usersResponse = await apiClient.get('/admin/users/all');
+        const usersData = Array.isArray(usersResponse.data) ? usersResponse.data : [];
+        console.log('✅ AdminDashboard: Users fetched:', usersData.length);
+        if (usersData.length > 0) {
+          console.log('📋 AdminDashboard: First user:', usersData[0]);
+        }
+        setUsers(usersData);
+
         const response = await apiClient.get('/admin/dashboard');
         setReport(response.data);
       } catch (error) {
@@ -116,24 +126,28 @@ const AdminDashboard = () => {
         // Try to fetch individual service data as fallback
         try {
           const [usersResponse, departmentsResponse, announcementsResponse, pollsResponse] = await Promise.allSettled([
-            apiClient.get('/admin/users'),
+            apiClient.get('/admin/users/all'),
             apiClient.get('/admin/departments'),
             apiClient.get('/admin/announcements'),
             apiClient.get('/admin/polls')
           ]);
 
-          const users = usersResponse.status === 'fulfilled' ? usersResponse.value.data : [];
+          const usersData = usersResponse.status === 'fulfilled' ? (Array.isArray(usersResponse.value.data) ? usersResponse.value.data : []) : [];
           const departments = departmentsResponse.status === 'fulfilled' ? departmentsResponse.value.data : [];
           const announcements = announcementsResponse.status === 'fulfilled' ? announcementsResponse.value.data : [];
           const polls = pollsResponse.status === 'fulfilled' ? pollsResponse.value.data : [];
 
+          // Store users for passing to CalendarComponent
+          setUsers(usersData);
+          console.log('✅ Users fetched for calendar (fallback):', usersData.length);
+          
           setReport({
-            totalUsers: users.length || 0, 
-            totalManagers: users.filter(u => u.role === 'MANAGER').length || 0, 
+            totalUsers: usersData.length || 0, 
+            totalManagers: usersData.filter(u => u.role === 'MANAGER').length || 0, 
             totalDepartments: departments.length || 0,
             totalPolls: polls.filter(p => p.isActive).length || 0,
             totalAnnouncements: announcements.length || 0,
-            activeUsers: users.filter(u => u.isActive).length || 0
+            activeUsers: usersData.filter(u => u.isActive).length || 0
           });
         } catch (fallbackError) {
           console.error("Fallback fetch failed:", fallbackError);
@@ -153,6 +167,8 @@ const AdminDashboard = () => {
     fetchReport();
   }, []);
 
+
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -167,9 +183,9 @@ const AdminDashboard = () => {
   }
 
   return (
-    <div className="relative min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/50 to-slate-100/40">
+    <div className="relative w-full min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/50 to-slate-100/40 overflow-x-hidden">
       {/* Subtle Background Elements */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
         {/* Decorative Blurred Circles - Warm Accent Colors */}
         <div className="absolute top-20 right-10 w-96 h-96 bg-rose-100/12 rounded-full blur-3xl"></div>
         <div className="absolute bottom-40 left-20 w-80 h-80 bg-amber-100/12 rounded-full blur-3xl"></div>
@@ -182,7 +198,7 @@ const AdminDashboard = () => {
 
       {/* Content */}
       <motion.div 
-        className="relative space-y-8 p-8"
+        className="relative z-10 space-y-8 p-8 w-full"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5 }}
@@ -353,7 +369,29 @@ const AdminDashboard = () => {
           </motion.div>
         </div>
       </motion.div>
+
+      {/* Calendar Widget - VISIBLE ON DASHBOARD */}
+      <motion.div 
+        className="w-full"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.4 }}
+      >
+        <CalendarComponent 
+          role="admin"
+          eventTypes={{
+            system: { bg: 'bg-blue-100', text: 'text-blue-700', badge: 'bg-blue-500', border: 'border-blue-300' },
+            maintenance: { bg: 'bg-orange-100', text: 'text-orange-700', badge: 'bg-orange-500', border: 'border-orange-300' },
+            security: { bg: 'bg-red-100', text: 'text-red-700', badge: 'bg-red-500', border: 'border-red-300' },
+            update: { bg: 'bg-purple-100', text: 'text-purple-700', badge: 'bg-purple-500', border: 'border-purple-300' }
+          }}
+          canCreateGlobalEvents={true}
+          canScheduleMeetings={true}
+          userList={users}
+        />
       </motion.div>
+
+    </motion.div>
     </div>
   );
 };

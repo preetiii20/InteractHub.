@@ -12,13 +12,16 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import java.util.stream.Collectors;
 
 import com.interacthub.admin_service.model.Announcement;
 import com.interacthub.admin_service.model.Poll;
 import com.interacthub.admin_service.service.AdminService;
 import com.interacthub.admin_service.sync.CompanyUpdatesSyncService;
+import com.interacthub.admin_service.util.OrganizationValidator;
 
 @RestController
 @RequestMapping("/api/admin/company-updates")
@@ -33,11 +36,15 @@ public class CompanyUpdatesController {
     
     @Autowired
     private SimpMessagingTemplate messagingTemplate;
+    
+    @Autowired
+    private OrganizationValidator organizationValidator;
 
     // ===== ANNOUNCEMENTS =====
     
     @PostMapping("/announcements/create")
-    public ResponseEntity<Map<String, Object>> createAnnouncement(@RequestBody Announcement announcement) {
+    public ResponseEntity<?> createAnnouncement(
+            @RequestBody Announcement announcement) {
         try {
             Announcement created = adminService.createAnnouncement(announcement);
             
@@ -50,22 +57,33 @@ public class CompanyUpdatesController {
                 "data", created
             ));
             
+            System.out.println("✅ Announcement created: " + created.getId());
             return ResponseEntity.ok(Map.of("message", "Announcement created successfully", "data", created));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            System.err.println("❌ Error creating announcement: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", "Failed to create announcement: " + e.getMessage()));
         }
     }
     
     @GetMapping("/announcements/all")
-    public ResponseEntity<List<Announcement>> getAllAnnouncements() {
-        List<Announcement> announcements = adminService.getAllAnnouncements();
-        return ResponseEntity.ok(announcements);
+    public ResponseEntity<?> getAllAnnouncements() {
+        try {
+            List<Announcement> announcements = adminService.getAllAnnouncements();
+            System.out.println("✅ Fetched " + announcements.size() + " announcements");
+            return ResponseEntity.ok(announcements);
+        } catch (Exception e) {
+            System.err.println("❌ Error fetching announcements: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", "Failed to fetch announcements: " + e.getMessage()));
+        }
     }
     
     @DeleteMapping("/announcements/{id}")
-    public ResponseEntity<Map<String, String>> deleteAnnouncement(@PathVariable Long id) {
+    public ResponseEntity<?> deleteAnnouncement(
+            @PathVariable Long id) {
         try {
-            adminService.deleteAnnouncement(id, "admin@interacthub.com");
+            adminService.deleteAnnouncement(id, null);
             
             // Broadcast deletion
             messagingTemplate.convertAndSend("/topic/announcements", Map.of(
@@ -73,16 +91,20 @@ public class CompanyUpdatesController {
                 "id", id
             ));
             
+            System.out.println("✅ Announcement deleted: " + id);
             return ResponseEntity.ok(Map.of("message", "Announcement deleted successfully"));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            System.err.println("❌ Error deleting announcement: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", "Failed to delete announcement: " + e.getMessage()));
         }
     }
 
     // ===== POLLS =====
     
     @PostMapping("/polls/create")
-    public ResponseEntity<Map<String, Object>> createPoll(@RequestBody Poll poll) {
+    public ResponseEntity<?> createPoll(
+            @RequestBody Poll poll) {
         try {
             Poll created = adminService.createPoll(poll);
             
@@ -95,20 +117,30 @@ public class CompanyUpdatesController {
                 "data", created
             ));
             
+            System.out.println("✅ Poll created: " + created.getId());
             return ResponseEntity.ok(Map.of("message", "Poll created successfully", "data", created));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            System.err.println("❌ Error creating poll: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", "Failed to create poll: " + e.getMessage()));
         }
     }
     
     @GetMapping("/polls/active")
-    public ResponseEntity<List<Poll>> getActivePolls() {
-        List<Poll> polls = adminService.getActivePolls();
-        return ResponseEntity.ok(polls);
+    public ResponseEntity<?> getActivePolls() {
+        try {
+            List<Poll> polls = adminService.getActivePolls();
+            System.out.println("✅ Fetched " + polls.size() + " active polls");
+            return ResponseEntity.ok(polls);
+        } catch (Exception e) {
+            System.err.println("❌ Error fetching polls: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", "Failed to fetch polls: " + e.getMessage()));
+        }
     }
     
     @PostMapping("/polls/vote/{pollId}")
-    public ResponseEntity<Map<String, Object>> voteOnPoll(
+    public ResponseEntity<?> voteOnPoll(
             @PathVariable Long pollId,
             @RequestBody Map<String, String> voteData) {
         try {
@@ -124,9 +156,12 @@ public class CompanyUpdatesController {
                 "result", result
             ));
             
+            System.out.println("✅ Vote recorded for poll: " + pollId);
             return ResponseEntity.ok(Map.of("message", "Vote recorded", "data", result));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            System.err.println("❌ Error voting on poll: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", "Failed to vote on poll: " + e.getMessage()));
         }
     }
 }

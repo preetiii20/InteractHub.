@@ -366,17 +366,21 @@ const AdminMonitoringDashboard = () => {
       
       const activitiesResponse = await fetch('http://localhost:8081/api/admin/monitoring/managers/activities');
       const activities = await activitiesResponse.json();
-      setManagerActivities(activities);
+      setManagerActivities(Array.isArray(activities) ? activities : []);
 
       const summaryResponse = await fetch('http://localhost:8081/api/admin/monitoring/summary');
       const summary = await summaryResponse.json();
-      setOrganizationSummary(summary);
+      setOrganizationSummary(summary || {});
 
       const interactionsResponse = await fetch('http://localhost:8081/api/admin/monitoring/interactions/live');
       const interactions = await interactionsResponse.json();
-      setLiveInteractions(interactions);
+      // Ensure interactions is an array
+      setLiveInteractions(Array.isArray(interactions) ? interactions : []);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
+      setManagerActivities([]);
+      setOrganizationSummary({});
+      setLiveInteractions([]);
     } finally {
       setLoading(false);
     }

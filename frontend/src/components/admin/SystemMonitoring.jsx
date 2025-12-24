@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import axios from 'axios';
 import apiConfig from '../../config/api';
+import apiClient from '../../services/apiClient';
 
 const SystemMonitoring = () => {
   const [statistics, setStatistics] = useState({});
@@ -18,10 +19,13 @@ const SystemMonitoring = () => {
 
   const fetchMonitoringData = async () => {
     try {
+      const userEmail = localStorage.getItem('userEmail');
+      const headers = userEmail ? { 'X-User-Email': userEmail } : {};
+      
       const [statsRes, interactionsRes, summaryRes] = await Promise.allSettled([
-        axios.get(`${apiConfig.adminService}/monitoring/statistics`),
-        axios.get(`${apiConfig.adminService}/monitoring/interactions/live`),
-        axios.get(`${apiConfig.adminService}/monitoring/summary`)
+        apiClient.get(`/admin/monitoring/statistics`, { headers }),
+        apiClient.get(`/admin/monitoring/interactions/live`, { headers }),
+        apiClient.get(`/admin/monitoring/summary`, { headers })
       ]);
 
       if (statsRes.status === 'fulfilled') setStatistics(statsRes.value.data || {});

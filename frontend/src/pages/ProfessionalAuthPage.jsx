@@ -216,11 +216,18 @@ const ProfessionalAuthPage = () => {
         >
           <div>
             <motion.div
-              className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-2xl shadow-2xl mb-6"
+              className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-2xl shadow-2xl mb-6 relative overflow-hidden"
               whileHover={{ scale: 1.05, rotate: 5 }}
               transition={{ type: "spring", stiffness: 300 }}
             >
-              <span className="text-3xl">🚀</span>
+              <motion.div
+                className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0"
+                animate={{ x: [-100, 100] }}
+                transition={{ duration: 2, repeat: Infinity }}
+              />
+              <svg className="w-8 h-8 text-white relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
             </motion.div>
             <h1 className="text-5xl font-bold text-white mb-3">InteractHub</h1>
             <p className="text-xl text-gray-300 mb-2">Enterprise Communication</p>
@@ -230,10 +237,18 @@ const ProfessionalAuthPage = () => {
           {/* Feature highlights */}
           <div className="space-y-4">
             <motion.div 
-              className="flex items-start gap-4 p-4 bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 hover:border-blue-500/50 transition-all"
+              className="flex items-start gap-4 p-4 bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 hover:border-blue-500/50 transition-all group cursor-pointer"
               whileHover={{ x: 10 }}
             >
-              <div className="text-2xl">⚡</div>
+              <motion.div 
+                className="flex-shrink-0 w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center group-hover:shadow-lg transition-all"
+                whileHover={{ rotate: 360 }}
+                transition={{ duration: 0.6 }}
+              >
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </motion.div>
               <div>
                 <h3 className="font-semibold text-white">Real-time Collaboration</h3>
                 <p className="text-sm text-gray-400">Instant messaging and live communication</p>
@@ -241,10 +256,18 @@ const ProfessionalAuthPage = () => {
             </motion.div>
 
             <motion.div 
-              className="flex items-start gap-4 p-4 bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 hover:border-blue-500/50 transition-all"
+              className="flex items-start gap-4 p-4 bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 hover:border-blue-500/50 transition-all group cursor-pointer"
               whileHover={{ x: 10 }}
             >
-              <div className="text-2xl">🔒</div>
+              <motion.div 
+                className="flex-shrink-0 w-10 h-10 rounded-lg bg-gradient-to-br from-cyan-500 to-cyan-600 flex items-center justify-center group-hover:shadow-lg transition-all"
+                whileHover={{ rotate: 360 }}
+                transition={{ duration: 0.6 }}
+              >
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              </motion.div>
               <div>
                 <h3 className="font-semibold text-white">Enterprise Security</h3>
                 <p className="text-sm text-gray-400">Bank-level encryption and compliance</p>
@@ -252,10 +275,18 @@ const ProfessionalAuthPage = () => {
             </motion.div>
 
             <motion.div 
-              className="flex items-start gap-4 p-4 bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 hover:border-blue-500/50 transition-all"
+              className="flex items-start gap-4 p-4 bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 hover:border-blue-500/50 transition-all group cursor-pointer"
               whileHover={{ x: 10 }}
             >
-              <div className="text-2xl">📊</div>
+              <motion.div 
+                className="flex-shrink-0 w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center group-hover:shadow-lg transition-all"
+                whileHover={{ rotate: 360 }}
+                transition={{ duration: 0.6 }}
+              >
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+              </motion.div>
               <div>
                 <h3 className="font-semibold text-white">Advanced Analytics</h3>
                 <p className="text-sm text-gray-400">Insights and monitoring dashboards</p>
@@ -263,10 +294,18 @@ const ProfessionalAuthPage = () => {
             </motion.div>
 
             <motion.div 
-              className="flex items-start gap-4 p-4 bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 hover:border-blue-500/50 transition-all"
+              className="flex items-start gap-4 p-4 bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 hover:border-blue-500/50 transition-all group cursor-pointer"
               whileHover={{ x: 10 }}
             >
-              <div className="text-2xl">🌐</div>
+              <motion.div 
+                className="flex-shrink-0 w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center group-hover:shadow-lg transition-all"
+                whileHover={{ rotate: 360 }}
+                transition={{ duration: 0.6 }}
+              >
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20H7m6-4h.01M15 12H9" />
+                </svg>
+              </motion.div>
               <div>
                 <h3 className="font-semibold text-white">Global Scale</h3>
                 <p className="text-sm text-gray-400">99.9% uptime with worldwide coverage</p>
@@ -276,18 +315,27 @@ const ProfessionalAuthPage = () => {
 
           {/* Stats */}
           <div className="grid grid-cols-3 gap-4 pt-4 border-t border-white/10">
-            <div>
+            <motion.div
+              whileHover={{ scale: 1.05 }}
+              className="cursor-pointer"
+            >
               <p className="text-2xl font-bold text-blue-400">10K+</p>
               <p className="text-sm text-gray-400">Active Users</p>
-            </div>
-            <div>
+            </motion.div>
+            <motion.div
+              whileHover={{ scale: 1.05 }}
+              className="cursor-pointer"
+            >
               <p className="text-2xl font-bold text-cyan-400">50+</p>
               <p className="text-sm text-gray-400">Organizations</p>
-            </div>
-            <div>
+            </motion.div>
+            <motion.div
+              whileHover={{ scale: 1.05 }}
+              className="cursor-pointer"
+            >
               <p className="text-2xl font-bold text-purple-400">99.9%</p>
               <p className="text-sm text-gray-400">Uptime</p>
-            </div>
+            </motion.div>
           </div>
         </motion.div>
 
@@ -302,11 +350,18 @@ const ProfessionalAuthPage = () => {
           variants={itemVariants}
         >
           <motion.div
-            className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-2xl shadow-2xl mb-4"
+            className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-2xl shadow-2xl mb-4 relative overflow-hidden"
             whileHover={{ scale: 1.05, rotate: 5 }}
             transition={{ type: "spring", stiffness: 300 }}
           >
-            <span className="text-3xl">🚀</span>
+            <motion.div
+              className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0"
+              animate={{ x: [-100, 100] }}
+              transition={{ duration: 2, repeat: Infinity }}
+            />
+            <svg className="w-8 h-8 text-white relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
           </motion.div>
           <h1 className="text-3xl font-bold text-white mb-2">InteractHub</h1>
           <p className="text-gray-300">Enterprise Communication</p>
@@ -314,40 +369,64 @@ const ProfessionalAuthPage = () => {
 
         {/* Auth card */}
         <motion.div
-          className="bg-white/10 backdrop-blur-2xl rounded-3xl shadow-2xl border border-white/20 p-8 lg:p-10"
+          className="bg-white/10 backdrop-blur-2xl rounded-3xl shadow-2xl border border-white/20 p-8 lg:p-10 relative overflow-hidden"
           variants={itemVariants}
         >
+          {/* Animated top border */}
+          <motion.div
+            className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent"
+            animate={{ opacity: [0.3, 1, 0.3] }}
+            transition={{ duration: 3, repeat: Infinity }}
+          />
           {/* Mode toggle */}
-          <div className="flex gap-2 mb-8 bg-white/5 p-1 rounded-xl">
-            <button
+          <motion.div className="flex gap-2 mb-8 bg-white/5 p-1 rounded-xl border border-white/10" variants={itemVariants}>
+            <motion.button
               onClick={() => {
                 setMode('login');
                 setError('');
                 setSuccess('');
               }}
-              className={`flex-1 py-3 rounded-lg font-semibold transition-all duration-300 ${
+              className={`flex-1 py-3 rounded-lg font-semibold transition-all duration-300 relative overflow-hidden ${
                 mode === 'login'
                   ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg'
                   : 'text-gray-300 hover:text-white'
               }`}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
             >
-              Sign In
-            </button>
-            <button
+              {mode === 'login' && (
+                <motion.div
+                  className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0"
+                  animate={{ x: [-100, 100] }}
+                  transition={{ duration: 1.5, repeat: Infinity }}
+                />
+              )}
+              <span className="relative z-10">Sign In</span>
+            </motion.button>
+            <motion.button
               onClick={() => {
                 setMode('register');
                 setError('');
                 setSuccess('');
               }}
-              className={`flex-1 py-3 rounded-lg font-semibold transition-all duration-300 ${
+              className={`flex-1 py-3 rounded-lg font-semibold transition-all duration-300 relative overflow-hidden ${
                 mode === 'register'
                   ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg'
                   : 'text-gray-300 hover:text-white'
               }`}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
             >
-              Register
-            </button>
-          </div>
+              {mode === 'register' && (
+                <motion.div
+                  className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0"
+                  animate={{ x: [-100, 100] }}
+                  transition={{ duration: 1.5, repeat: Infinity }}
+                />
+              )}
+              <span className="relative z-10">Register</span>
+            </motion.button>
+          </motion.div>
 
           <AnimatePresence mode="wait">
             {mode === 'login' ? (
@@ -364,15 +443,25 @@ const ProfessionalAuthPage = () => {
                   <label className="block text-sm font-medium text-gray-200 mb-2">
                     Email Address
                   </label>
-                  <input
-                    type="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500/50 transition-all duration-300 hover:bg-white/10"
-                    placeholder="you@company.com"
-                    required
-                  />
+                  <motion.div
+                    className="relative"
+                    whileFocus={{ scale: 1.01 }}
+                  >
+                    <input
+                      type="email"
+                      name="email"
+                      value={formData.email}
+                      onChange={handleInputChange}
+                      className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500/50 transition-all duration-300 hover:bg-white/10"
+                      placeholder="you@company.com"
+                      required
+                    />
+                    <motion.div
+                      className="absolute inset-0 rounded-xl pointer-events-none"
+                      initial={{ boxShadow: "0 0 0 0 rgba(59, 130, 246, 0)" }}
+                      whileFocus={{ boxShadow: "0 0 0 3px rgba(59, 130, 246, 0.1)" }}
+                    />
+                  </motion.div>
                 </motion.div>
 
                 <motion.div variants={itemVariants}>

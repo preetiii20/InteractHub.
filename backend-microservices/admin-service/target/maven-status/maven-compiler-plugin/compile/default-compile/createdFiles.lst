@@ -1,5 +1,6 @@
 com\interacthub\admin_service\controller\TestController.class
 com\interacthub\admin_service\config\CorsConfig.class
+com\interacthub\admin_service\controller\MeetingController.class
 com\interacthub\admin_service\model\AuditLog.class
 com\interacthub\admin_service\config\WebConfig.class
 com\interacthub\admin_service\security\JwtUtils.class
@@ -11,6 +12,7 @@ com\interacthub\admin_service\repository\package-info.class
 com\interacthub\admin_service\model\Poll.class
 com\interacthub\admin_service\model\Department.class
 com\interacthub\admin_service\config\AuditInterceptor.class
+com\interacthub\admin_service\model\Meeting.class
 com\interacthub\admin_service\controller\AdminMonitoringController.class
 com\interacthub\admin_service\config\WebSocketConfig.class
 com\interacthub\admin_service\repository\AuditLogRepository.class
@@ -19,6 +21,8 @@ com\interacthub\admin_service\model\User$Role.class
 com\interacthub\admin_service\repository\PasswordResetTokenRepository.class
 com\interacthub\admin_service\model\PasswordResetToken.class
 com\interacthub\admin_service\repository\PollRepository.class
+com\interacthub\admin_service\service\MeetingService.class
+com\interacthub\admin_service\repository\MeetingRepository.class
 com\interacthub\admin_service\repository\DepartmentRepository.class
 com\interacthub\admin_service\repository\DocumentRepository.class
 com\interacthub\admin_service\controller\CompanyUpdatesController.class
@@ -26,6 +30,7 @@ com\interacthub\admin_service\model\Organization.class
 com\interacthub\admin_service\config\DataInitializer.class
 com\interacthub\admin_service\config\SecurityConfig.class
 com\interacthub\admin_service\controller\package-info.class
+com\interacthub\admin_service\util\OrganizationValidator.class
 com\interacthub\admin_service\repository\OrganizationRepository.class
 com\interacthub\admin_service\controller\AuthController.class
 com\interacthub\admin_service\config\RestTemplateConfig.class

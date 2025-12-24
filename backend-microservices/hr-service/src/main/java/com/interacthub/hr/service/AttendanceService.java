@@ -29,7 +29,44 @@ public class AttendanceService {
     }
 
     public List<AttendanceRecord> getAttendanceByDate(LocalDate date) {
-        return repo.findByDate(date);
+        List<AttendanceRecord> records = repo.findByDate(date);
+        
+        // Fetch employee names from admin service
+        try {
+            var response = restTemplate.getForEntity(adminServiceUrl + "/users/all", java.util.List.class);
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                java.util.Map<Long, String> employeeNames = new java.util.HashMap<>();
+                
+                for (Object o : response.getBody()) {
+                    if (o instanceof java.util.Map<?, ?> m) {
+                        Object id = m.get("id");
+                        Object fn = m.get("firstName");
+                        Object ln = m.get("lastName");
+                        if (id != null) {
+                            String firstName = fn == null ? "" : String.valueOf(fn);
+                            String lastName = ln == null ? "" : String.valueOf(ln);
+                            String fullName = (firstName + " " + lastName).trim();
+                            if (!fullName.isBlank()) {
+                                employeeNames.put(Long.valueOf(String.valueOf(id)), fullName);
+                            }
+                        }
+                    }
+                }
+                
+                // Apply employee names to records
+                for (AttendanceRecord record : records) {
+                    if ((record.getEmployeeName() == null || record.getEmployeeName().isBlank()) && 
+                        employeeNames.containsKey(record.getEmployeeId())) {
+                        record.setEmployeeName(employeeNames.get(record.getEmployeeId()));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error fetching employee names: " + e.getMessage());
+            e.printStackTrace();
+        }
+        
+        return records;
     }
 
     public AttendanceRecord mark(Long employeeId, String type, LocalDate date) {

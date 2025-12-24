@@ -2,6 +2,7 @@ package com.interacthub.admin_service.controller;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +25,7 @@ import com.interacthub.admin_service.model.Department;
 import com.interacthub.admin_service.model.Poll;
 import com.interacthub.admin_service.model.User;
 import com.interacthub.admin_service.service.AdminService;
+import com.interacthub.admin_service.util.OrganizationValidator;
 
 @RestController
 @CrossOrigin(origins = "http://localhost:3000")
@@ -35,6 +37,9 @@ public class AdminController {
     
     @Autowired
     private SimpMessagingTemplate messagingTemplate;
+    
+    @Autowired
+    private OrganizationValidator organizationValidator;
     
     // --- 1. User Management (CRUD) ---
     
@@ -56,11 +61,18 @@ public class AdminController {
     }
     
     @GetMapping("/users/all")
-    public List<User> getAllUsersNoPagination(@RequestParam(required = false) Long organizationId) {
-        if (organizationId != null) {
-            return adminService.getAllUsersByOrganization(organizationId);
+    public ResponseEntity<?> getAllUsersNoPagination(
+            @RequestParam(required = false) Long organizationId) {
+        try {
+            System.out.println("📋 Fetching all users");
+            List<User> users = adminService.getAllUsers();
+            System.out.println("✅ Returning " + users.size() + " users");
+            return ResponseEntity.ok(users);
+        } catch (Exception e) {
+            System.err.println("❌ Error fetching users: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", "Error fetching users: " + e.getMessage()));
         }
-        return adminService.getAllUsers();
     }
     
     @PostMapping("/users")
@@ -85,6 +97,34 @@ public class AdminController {
             return ResponseEntity.ok(Map.of("message", "User ID " + id + " deleted successfully."));
         } catch (RuntimeException e) {
             return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
+        }
+    }
+    
+    @GetMapping("/users/by-email")
+    public ResponseEntity<?> getUserByEmail(@RequestParam String email) {
+        try {
+            System.out.println("🔍 Fetching user by email: " + email);
+            User user = adminService.getUserByEmail(email);
+            if (user != null) {
+                System.out.println("✅ User found: " + user.getEmail());
+                // Return user details as map to avoid serialization issues
+                Map<String, Object> userMap = Map.of(
+                    "id", user.getId(),
+                    "email", user.getEmail(),
+                    "firstName", user.getFirstName(),
+                    "lastName", user.getLastName(),
+                    "role", user.getRole().toString(),
+                    "organizationId", user.getOrganizationId() != null ? user.getOrganizationId() : 0
+                );
+                return ResponseEntity.ok(userMap);
+            } else {
+                System.out.println("⚠️ User not found: " + email);
+                return ResponseEntity.notFound().build();
+            }
+        } catch (Exception e) {
+            System.err.println("❌ Error fetching user by email: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
         }
     }
     
@@ -163,8 +203,22 @@ public class AdminController {
     }
     
     @GetMapping("/announcements")
-    public List<Announcement> getAllAnnouncements() {
-        return adminService.getAllAnnouncements();
+    public ResponseEntity<?> getAllAnnouncements(
+            @RequestHeader(value = "X-User-Email", required = true) String userEmail) {
+        try {
+            Long organizationId = organizationValidator.getOrganizationIdFromEmail(userEmail);
+            if (organizationId == null) {
+                return ResponseEntity.status(403).body(Map.of("error", "User organization not found"));
+            }
+            
+            List<Announcement> announcements = adminService.getAllAnnouncements().stream()
+                .filter(a -> a.getOrganizationId() == null || a.getOrganizationId().equals(organizationId))
+                .collect(Collectors.toList());
+            
+            return ResponseEntity.ok(announcements);
+        } catch (Exception e) {
+            return ResponseEntity.status(403).body(Map.of("error", "Access denied"));
+        }
     }
     
     @GetMapping("/announcements/target/{targetAudience}")
@@ -190,8 +244,22 @@ public class AdminController {
     }
     
     @GetMapping("/polls")
-    public List<Poll> getAllPolls() {
-        return adminService.getActivePolls();
+    public ResponseEntity<?> getAllPolls(
+            @RequestHeader(value = "X-User-Email", required = true) String userEmail) {
+        try {
+            Long organizationId = organizationValidator.getOrganizationIdFromEmail(userEmail);
+            if (organizationId == null) {
+                return ResponseEntity.status(403).body(Map.of("error", "User organization not found"));
+            }
+            
+            List<Poll> polls = adminService.getActivePolls().stream()
+                .filter(p -> p.getOrganizationId() == null || p.getOrganizationId().equals(organizationId))
+                .collect(Collectors.toList());
+            
+            return ResponseEntity.ok(polls);
+        } catch (Exception e) {
+            return ResponseEntity.status(403).body(Map.of("error", "Access denied"));
+        }
     }
     
     @GetMapping("/polls/target/{targetAudience}")
@@ -295,8 +363,9 @@ public class AdminController {
     @GetMapping("/audit/logs")
     public ResponseEntity<Map<String, Object>> getAuditLogsPaginated(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return ResponseEntity.ok(adminService.getAuditLogsPaginated(page, size));
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) Long organizationId) {
+        return ResponseEntity.ok(adminService.getAuditLogsPaginated(page, size, organizationId));
     }
     
     @GetMapping("/monitoring")

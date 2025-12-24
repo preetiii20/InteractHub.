@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meeting Notification Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        .step { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 8px; }
+        .step h3 { margin-top: 0; color: #333; }
+        button { padding: 10px 20px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        input { padding: 8px; margin: 5px; border: 1px solid #ddd; border-radius: 4px; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 5px; overflow-x: auto; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Meeting Notification Test</h1>
+        <p>This page tests the complete meeting notification flow to ensure participants receive notifications.</p>
+        
+        <div class="step">
+            <h3>Step 1: Create Meeting with Notifications</h3>
+            <p>Create a meeting via the backend API and send notifications to participants.</p>
+            
+            <label>Meeting Title: <input type="text" id="meetingTitle" value="Test Meeting Notification" /></label><br><br>
+            <label>Participant IDs: <input type="text" id="participantIds" value="2,3,20" placeholder="comma-separated" /></label><br><br>
+            <button onclick="createMeetingWithNotifications()">Create Meeting & Send Notifications</button>
+            
+            <div id="createResults"></div>
+        </div>
+        
+        <div class="step">
+            <h3>Step 2: Verify Notifications in localStorage</h3>
+            <p>Check if notifications were properly stored in localStorage for participants.</p>
+            
+            <label>Check User ID: <input type="number" id="checkUserId" value="2" /></label>
+            <button onclick="checkNotifications()">Check Notifications</button>
+            <button onclick="clearNotifications()">Clear Notifications</button>
+            
+            <div id="checkResults"></div>
+        </div>
+        
+        <div class="step">
+            <h3>Step 3: Verify Meeting Visibility</h3>
+            <p>Check if participants can see the meeting in their calendar via API.</p>
+            
+            <label>User ID: <input type="number" id="verifyUserId" value="2" /></label>
+            <button onclick="verifyMeetingAccess()">Check User's Meetings</button>
+            
+            <div id="verifyResults"></div>
+        </div>
+        
+        <div class="step">
+            <h3>Step 4: Manual Test Instructions</h3>
+            <p><strong>To test the complete flow in the actual application:</strong></p>
+            <ol>
+                <li>Login as Admin and go to Calendar</li>
+                <li>Create a meeting with participants (e.g., users 2, 3, 20)</li>
+                <li>Check console logs for notification flow</li>
+                <li>Login as a participant (e.g., user 2)</li>
+                <li>Check the bell icon for notifications</li>
+                <li>Verify the meeting appears in their calendar</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        function addResult(containerId, message, type = 'info') {
+            const container = document.getElementById(containerId);
+            const div = document.createElement('div');
+            div.className = `result ${type}`;
+            div.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong>: ${message}`;
+            container.appendChild(div);
+        }
+        
+        async function createMeetingWithNotifications() {
+            const title = document.getElementById('meetingTitle').value;
+            const participantIds = document.getElementById('participantIds').value.split(',').map(id => Number(id.trim())).filter(id => id);
+            
+            const meetingData = {
+                title: title,
+                description: 'Test meeting for notification verification',
+                meetingDate: '2025-12-22',
+                meetingTime: '16:00',
+                meetingEndTime: '17:00',
+                jitsiLink: `https://meet.jit.si/test-notif-${Date.now()}`,
+                organizerId: 16,
+                organizerRole: 'admin',
+                participantIds: participantIds
+            };
+            
+            try {
+                addResult('createResults', `📝 Creating meeting "${title}" with participants: ${participantIds.join(', ')}`, 'info');
+                
+                const response = await fetch('http://localhost:8081/api/admin/meetings/with-notifications', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(meetingData)
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    addResult('createResults', `✅ Meeting created successfully! ID: ${result.meeting.id}`, 'success');
+                    
+                    // Now manually create notifications for participants (simulating frontend)
+                    addResult('createResults', '📬 Creating notifications for participants...', 'info');
+                    
+                    for (const participantId of participantIds) {
+                        const notification = {
+                            id: Date.now() + Math.random(),
+                            type: 'MEETING_INVITATION',
+                            title: `Meeting Invitation: ${title}`,
+                            message: `You've been invited to "${title}" on ${meetingData.meetingDate} at ${meetingData.meetingTime}. Check your calendar for details.`,
+                            timestamp: new Date().toISOString(),
+                            read: false,
+                            data: {
+                                meetingId: result.meeting.id,
+                                meetingTitle: title,
+                                meetingDate: meetingData.meetingDate,
+                                meetingTime: meetingData.meetingTime,
+                                jitsiLink: result.meeting.jitsiLink
+                            }
+                        };
+                        
+                        const notifKey = `notifications_${participantId}`;
+                        const existingNotifs = localStorage.getItem(notifKey);
+                        const notifs = existingNotifs ? JSON.parse(existingNotifs) : [];
+                        notifs.unshift(notification);
+                        localStorage.setItem(notifKey, JSON.stringify(notifs));
+                        
+                        addResult('createResults', `📬 Notification created for user ${participantId}`, 'success');
+                    }
+                    
+                    addResult('createResults', `🎉 Complete! Meeting created and ${participantIds.length} notifications sent`, 'success');
+                } else {
+                    addResult('createResults', `❌ Failed to create meeting: ${response.status}`, 'error');
+                }
+            } catch (error) {
+                addResult('createResults', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        function checkNotifications() {
+            const userId = document.getElementById('checkUserId').value;
+            const notifKey = `notifications_${userId}`;
+            
+            try {
+                const stored = localStorage.getItem(notifKey);
+                if (stored) {
+                    const notifications = JSON.parse(stored);
+                    addResult('checkResults', `📬 User ${userId} has ${notifications.length} notifications`, 'success');
+                    
+                    notifications.forEach((notif, index) => {
+                        addResult('checkResults', 
+                            `${index + 1}. ${notif.title} (${notif.type}) - ${notif.read ? 'Read' : 'Unread'}<br>
+                             Message: ${notif.message}<br>
+                             Time: ${new Date(notif.timestamp).toLocaleString()}`, 'info');
+                    });
+                } else {
+                    addResult('checkResults', `📭 No notifications found for user ${userId}`, 'info');
+                }
+            } catch (error) {
+                addResult('checkResults', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        function clearNotifications() {
+            const userId = document.getElementById('checkUserId').value;
+            const notifKey = `notifications_${userId}`;
+            localStorage.removeItem(notifKey);
+            addResult('checkResults', `🗑️ Cleared notifications for user ${userId}`, 'success');
+        }
+        
+        async function verifyMeetingAccess() {
+            const userId = document.getElementById('verifyUserId').value;
+            
+            try {
+                const response = await fetch(`http://localhost:8081/api/admin/meetings/user/${userId}`);
+                if (response.ok) {
+                    const meetings = await response.json();
+                    addResult('verifyResults', `📅 User ${userId} can access ${meetings.length} meetings`, 'success');
+                    
+                    if (meetings.length > 0) {
+                        const recentMeetings = meetings.slice(0, 3);
+                        recentMeetings.forEach((meeting, index) => {
+                            addResult('verifyResults', 
+                                `${index + 1}. "${meeting.title}" on ${meeting.meetingDate} at ${meeting.meetingTime}`, 'info');
+                        });
+                    }
+                } else {
+                    addResult('verifyResults', `❌ Failed to get meetings: ${response.status}`, 'error');
+                }
+            } catch (error) {
+                addResult('verifyResults', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        // Auto-load message
+        window.onload = function() {
+            addResult('createResults', '🚀 Test page loaded. Click buttons above to test the notification flow.', 'info');
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Notification Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .test-section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 8px; }
+        button { padding: 10px 20px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        input, select { padding: 8px; margin: 5px; border: 1px solid #ddd; border-radius: 4px; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 5px; overflow-x: auto; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Simple Notification Test</h1>
+        <p>This page tests the notification system step by step to identify issues.</p>
+        
+        <div class="test-section">
+            <h3>Step 1: Test localStorage Notifications</h3>
+            <p>Test if we can store and retrieve notifications from localStorage.</p>
+            
+            <label>User ID: <input type="number" id="testUserId" value="2" /></label>
+            <button onclick="testLocalStorage()">Test localStorage</button>
+            <button onclick="checkStoredNotifications()">Check Stored</button>
+            <button onclick="clearStoredNotifications()">Clear All</button>
+            
+            <div id="localStorageResults"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>Step 2: Test Event Dispatching</h3>
+            <p>Test if custom events are properly dispatched and received.</p>
+            
+            <button onclick="testEventDispatch()">Dispatch Test Event</button>
+            <button onclick="startEventListener()">Start Listening</button>
+            <button onclick="stopEventListener()">Stop Listening</button>
+            
+            <div id="eventResults"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>Step 3: Test Meeting Notification Creation</h3>
+            <p>Test creating a meeting notification like the calendar does.</p>
+            
+            <label>Meeting Title: <input type="text" id="meetingTitle" value="Test Meeting" /></label><br>
+            <label>Participant IDs: <input type="text" id="participantIds" value="2,3,20" placeholder="comma-separated" /></label><br>
+            <button onclick="createMeetingNotification()">Create Meeting Notification</button>
+            
+            <div id="meetingResults"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>Step 4: Test Backend Meeting Creation</h3>
+            <p>Test creating a meeting via the backend API.</p>
+            
+            <button onclick="testBackendMeeting()">Create Backend Meeting</button>
+            <button onclick="checkUserMeetings()">Check User Meetings</button>
+            
+            <div id="backendResults"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>Current Notifications</h3>
+            <p>View current notifications for any user.</p>
+            
+            <label>View User ID: <input type="number" id="viewUserId" value="2" /></label>
+            <button onclick="viewNotifications()">View Notifications</button>
+            
+            <div id="notificationView"></div>
+        </div>
+    </div>
+
+    <script>
+        let eventListener = null;
+        
+        function addResult(containerId, message, type = 'info') {
+            const container = document.getElementById(containerId);
+            const div = document.createElement('div');
+            div.className = `result ${type}`;
+            div.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong>: ${message}`;
+            container.appendChild(div);
+        }
+        
+        function testLocalStorage() {
+            const userId = document.getElementById('testUserId').value;
+            const notifKey = `notifications_${userId}`;
+            
+            try {
+                // Create test notification
+                const testNotification = {
+                    id: Date.now(),
+                    type: 'MEETING_INVITATION',
+                    title: 'Test Notification',
+                    message: 'This is a test notification',
+                    timestamp: new Date().toISOString(),
+                    read: false
+                };
+                
+                // Store it
+                const existing = localStorage.getItem(notifKey);
+                const notifications = existing ? JSON.parse(existing) : [];
+                notifications.unshift(testNotification);
+                localStorage.setItem(notifKey, JSON.stringify(notifications));
+                
+                addResult('localStorageResults', `✅ Test notification stored for user ${userId}`, 'success');
+                addResult('localStorageResults', `<pre>${JSON.stringify(testNotification, null, 2)}</pre>`, 'info');
+            } catch (error) {
+                addResult('localStorageResults', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        function checkStoredNotifications() {
+            const userId = document.getElementById('testUserId').value;
+            const notifKey = `notifications_${userId}`;
+            
+            try {
+                const stored = localStorage.getItem(notifKey);
+                if (stored) {
+                    const notifications = JSON.parse(stored);
+                    addResult('localStorageResults', `📬 Found ${notifications.length} notifications for user ${userId}`, 'success');
+                    addResult('localStorageResults', `<pre>${JSON.stringify(notifications, null, 2)}</pre>`, 'info');
+                } else {
+                    addResult('localStorageResults', `📭 No notifications found for user ${userId}`, 'info');
+                }
+            } catch (error) {
+                addResult('localStorageResults', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        function clearStoredNotifications() {
+            const userId = document.getElementById('testUserId').value;
+            const notifKey = `notifications_${userId}`;
+            localStorage.removeItem(notifKey);
+            addResult('localStorageResults', `🗑️ Cleared notifications for user ${userId}`, 'success');
+        }
+        
+        function testEventDispatch() {
+            const userId = document.getElementById('testUserId').value;
+            
+            try {
+                window.dispatchEvent(new CustomEvent('notificationsUpdated', {
+                    detail: { userId: Number(userId) }
+                }));
+                addResult('eventResults', `📡 Dispatched notificationsUpdated event for user ${userId}`, 'success');
+            } catch (error) {
+                addResult('eventResults', `❌ Error dispatching event: ${error.message}`, 'error');
+            }
+        }
+        
+        function startEventListener() {
+            if (eventListener) {
+                addResult('eventResults', '⚠️ Event listener already running', 'info');
+                return;
+            }
+            
+            eventListener = (e) => {
+                const userId = e.detail?.userId;
+                addResult('eventResults', `📡 Received notificationsUpdated event for user ${userId}`, 'success');
+            };
+            
+            window.addEventListener('notificationsUpdated', eventListener);
+            addResult('eventResults', '👂 Started listening for notificationsUpdated events', 'success');
+        }
+        
+        function stopEventListener() {
+            if (eventListener) {
+                window.removeEventListener('notificationsUpdated', eventListener);
+                eventListener = null;
+                addResult('eventResults', '🛑 Stopped listening for events', 'success');
+            } else {
+                addResult('eventResults', '⚠️ No event listener running', 'info');
+            }
+        }
+        
+        function createMeetingNotification() {
+            const title = document.getElementById('meetingTitle').value;
+            const participantIds = document.getElementById('participantIds').value.split(',').map(id => id.trim()).filter(id => id);
+            
+            try {
+                for (const participantId of participantIds) {
+                    const numId = Number(participantId);
+                    const notifKey = `notifications_${numId}`;
+                    
+                    const notification = {
+                        id: Date.now() + Math.random(),
+                        type: 'MEETING_INVITATION',
+                        title: `Meeting Invitation: ${title}`,
+                        message: `You've been invited to "${title}" on 2025-12-22 at 14:00. Check your calendar for details.`,
+                        timestamp: new Date().toISOString(),
+                        read: false,
+                        data: {
+                            meetingId: Date.now(),
+                            meetingTitle: title,
+                            meetingDate: '2025-12-22',
+                            meetingTime: '14:00',
+                            jitsiLink: 'https://meet.jit.si/test'
+                        }
+                    };
+                    
+                    const existingNotifs = localStorage.getItem(notifKey);
+                    const notifs = existingNotifs ? JSON.parse(existingNotifs) : [];
+                    notifs.unshift(notification);
+                    localStorage.setItem(notifKey, JSON.stringify(notifs));
+
+                    // Trigger notification update event
+                    window.dispatchEvent(new CustomEvent('notificationsUpdated', {
+                        detail: { userId: numId }
+                    }));
+                    
+                    addResult('meetingResults', `📬 Meeting notification sent to user ${numId}`, 'success');
+                }
+                
+                addResult('meetingResults', `✅ Meeting notifications sent to ${participantIds.length} participants`, 'success');
+            } catch (error) {
+                addResult('meetingResults', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testBackendMeeting() {
+            const title = document.getElementById('meetingTitle').value;
+            const participantIds = document.getElementById('participantIds').value.split(',').map(id => Number(id.trim())).filter(id => id);
+            
+            const meetingData = {
+                title: title,
+                description: 'Test meeting from simple test page',
+                meetingDate: '2025-12-22',
+                meetingTime: '15:00',
+                meetingEndTime: '16:00',
+                jitsiLink: `https://meet.jit.si/simple-test-${Date.now()}`,
+                organizerId: 16,
+                organizerRole: 'admin',
+                participantIds: participantIds
+            };
+            
+            try {
+                addResult('backendResults', '📝 Creating meeting via backend API...', 'info');
+                
+                const response = await fetch('http://localhost:8081/api/admin/meetings/with-notifications', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(meetingData)
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    addResult('backendResults', `✅ Meeting created successfully! ID: ${result.meeting.id}`, 'success');
+                    addResult('backendResults', `<pre>${JSON.stringify(result, null, 2)}</pre>`, 'info');
+                } else {
+                    addResult('backendResults', `❌ Failed to create meeting: ${response.status}`, 'error');
+                }
+            } catch (error) {
+                addResult('backendResults', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        async function checkUserMeetings() {
+            const userId = document.getElementById('testUserId').value;
+            
+            try {
+                const response = await fetch(`http://localhost:8081/api/admin/meetings/user/${userId}`);
+                if (response.ok) {
+                    const meetings = await response.json();
+                    addResult('backendResults', `📅 User ${userId} has ${meetings.length} meetings`, 'success');
+                    addResult('backendResults', `<pre>${JSON.stringify(meetings, null, 2)}</pre>`, 'info');
+                } else {
+                    addResult('backendResults', `❌ Failed to get meetings: ${response.status}`, 'error');
+                }
+            } catch (error) {
+                addResult('backendResults', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        function viewNotifications() {
+            const userId = document.getElementById('viewUserId').value;
+            const notifKey = `notifications_${userId}`;
+            
+            try {
+                const stored = localStorage.getItem(notifKey);
+                if (stored) {
+                    const notifications = JSON.parse(stored);
+                    addResult('notificationView', `📬 User ${userId} has ${notifications.length} notifications:`, 'success');
+                    
+                    notifications.forEach((notif, index) => {
+                        addResult('notificationView', 
+                            `${index + 1}. ${notif.title} (${notif.type}) - ${notif.read ? 'Read' : 'Unread'}<br>
+                             Message: ${notif.message}<br>
+                             Time: ${new Date(notif.timestamp).toLocaleString()}`, 'info');
+                    });
+                } else {
+                    addResult('notificationView', `📭 No notifications found for user ${userId}`, 'info');
+                }
+            } catch (error) {
+                addResult('notificationView', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        // Auto-start event listener
+        window.onload = function() {
+            startEventListener();
+            addResult('eventResults', '🚀 Page loaded, event listener started automatically', 'success');
+        };
+    </script>
+</body>
+</html>

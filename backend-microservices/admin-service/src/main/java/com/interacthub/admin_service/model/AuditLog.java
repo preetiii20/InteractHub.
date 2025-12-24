@@ -4,7 +4,10 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "audit_logs")
+@Table(name = "audit_logs", indexes = {
+    @Index(name = "idx_audit_timestamp", columnList = "timestamp"),
+    @Index(name = "idx_audit_org", columnList = "organization_id")
+})
 public class AuditLog {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -27,6 +30,9 @@ public class AuditLog {
     
     @Column(name = "ip_address")
     private String ipAddress;
+    
+    @Column(name = "organization_id")
+    private Long organizationId; // Organization isolation
     
     // Constructor with parameters that your code uses
     public AuditLog(String userEmail, String action, String entityType, String description, String ipAddress) {
@@ -105,5 +111,13 @@ public class AuditLog {
     
     public void setIpAddress(String ipAddress) {
         this.ipAddress = ipAddress;
+    }
+    
+    public Long getOrganizationId() {
+        return organizationId;
+    }
+    
+    public void setOrganizationId(Long organizationId) {
+        this.organizationId = organizationId;
     }
 }

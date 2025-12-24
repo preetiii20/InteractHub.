@@ -1,253 +1,434 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import ChatWindow from '../common/ChatWindow';
-import { authHelpers } from '../../config/auth';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-
-const CHAT_SERVICE_URL = 'http://localhost:8085/api/chat';
-
-const normalizeDmChannel = (a, b) => {
-    // a and b are expected to be emails (lowercase)
-    const A = (a || '').trim().toLowerCase();
-    const B = (b || '').trim().toLowerCase();
-    return `DM_${A <= B ? `${A}|${B}` : `${B}|${A}`}`;
-};
+import SockJS from 'sockjs-client';
+import { Client } from '@stomp/stompjs';
+import { motion } from 'framer-motion';
+import apiConfig from '../../config/api';
+import { authHelpers } from '../../config/auth';
+import apiClient from '../../services/apiClient';
+import AnnouncementList from '../shared/AnnouncementList';
+import PollList from '../shared/PollList';
 
 const AdminLiveCommunication = () => {
-    // CRITICAL: Use user's email as the unique chat identifier
-    const selfIdentifier = authHelpers.getUserEmail() || authHelpers.getUserName();
-    const [recipientIdentifier, setRecipientIdentifier] = useState('');
-    const [directory, setDirectory] = useState([]);
+  const [announcements, setAnnouncements] = useState([]);
+  const [polls, setPolls] = useState([]);
+  const [globalAnnouncement, setGlobalAnnouncement] = useState({ title: '', content: '', type: 'GENERAL' });
+  const [globalPoll, setGlobalPoll] = useState({ question: '', options: [''] });
+  const [message, setMessage] = useState(null);
+  const [userLikes, setUserLikes] = useState({});
+  const [likeCounts, setLikeCounts] = useState({});
+  const [comments, setComments] = useState({});
+  const [pollResults, setPollResults] = useState({});
+  const [userVotes, setUserVotes] = useState({});
+  const [commentDrafts, setCommentDrafts] = useState({});
+  const [pollChoice, setPollChoice] = useState({});
+
+  const stompRef = useRef(null);
+  const myName = authHelpers.getUserName();
+
+  useEffect(() => {
+    fetchGlobal();
+    const chatSocket = new SockJS(apiConfig.websocketUrl);
+    const adminSocket = new SockJS(apiConfig.adminWebsocketUrl);
+    const chatClient = new Client({ webSocketFactory: () => chatSocket, reconnectDelay: 5000 });
+    const adminClient = new Client({ webSocketFactory: () => adminSocket, reconnectDelay: 5000 });
     
-    // Map to store display names
-    const [nameMap, setNameMap] = useState({});
+    chatClient.onConnect = () => {
+      chatClient.subscribe('/topic/announcements.new', m => {
+        try {
+          const ann = JSON.parse(m.body || '{}');
+          const a = (ann.targetAudience || '').toUpperCase();
+          if (['ALL', 'ADMIN'].includes(a)) setAnnouncements(prev => [ann, ...prev]);
+        } catch {}
+      });
+      chatClient.subscribe('/topic/polls.new', m => {
+        try {
+          const poll = JSON.parse(m.body || '{}');
+          const a = (poll.targetAudience || '').toUpperCase();
+          if (['ALL', 'ADMIN'].includes(a)) setPolls(prev => [poll, ...prev]);
+        } catch {}
+      });
+      
+      chatClient.subscribe('/topic/announcements.reactions', (msg) => {
+        try {
+          const reaction = JSON.parse(msg.body || '{}');
+          if (reaction.type === 'LIKE') {
+            setUserLikes(prev => ({ ...prev, [reaction.announcementId]: reaction.liked }));
+            fetchGlobal();
+          } else if (reaction.type === 'COMMENT') {
+            fetchGlobal();
+          }
+        } catch (error) {
+          console.error('Error processing announcement reaction:', error);
+        }
+      });
+    };
     
-    // Call state
-    const [callStatus, setCallStatus] = useState('idle'); // idle, calling, in_call, ended
-    const [callType, setCallType] = useState('voice'); // voice, video
-    const [roomId, setRoomId] = useState(null);
-
-    useEffect(() => {
-        (async () => {
-            const urls = [
-                'http://localhost:8081/api/admin/users',
-                'http://localhost:8085/api/chat/users/all'
-            ];
-
-            // Arrays to store all identifiers and names from all endpoints
-            const allIdentifiers = new Set();
-            const allNames = {};
-
-            // Fetch from all endpoints
-            for (const url of urls) {
-                try {
-                    const res = await fetch(url, { credentials: 'include' });
-                    if (!res.ok) continue;
-                    const users = await res.json();
-                    
-                    if (Array.isArray(users)) {
-                        users.forEach(u => {
-                            const email = (u.email || '').trim();
-                            if (!email) return;
-
-                            const fullName = u.firstName ? `${u.firstName} ${u.lastName || ''}`.trim() : (u.name || u.username || '');
-                            
-                            // Use email as the identifier
-                            allIdentifiers.add(email);
-                            allNames[email] = fullName || email;
-                        });
-                    }
-                } catch (e) {
-                    console.error("Error fetching user directory:", e);
-                }
-            }
-
-            // Ensure self is in the directory
-            if (selfIdentifier && !allIdentifiers.has(selfIdentifier)) {
-                allIdentifiers.add(selfIdentifier);
-                allNames[selfIdentifier] = authHelpers.getUserName() || selfIdentifier;
-            }
-
-            // Set the state with all collected users
-            setNameMap(allNames);
-            setDirectory(Array.from(allIdentifiers).filter(id => id.includes('@')).sort());
-        })();
-    }, [selfIdentifier]);
-
-    const channelId = useMemo(() => {
-        return recipientIdentifier ? normalizeDmChannel(selfIdentifier, recipientIdentifier) : '';
-    }, [selfIdentifier, recipientIdentifier]);
-
-    const currentUserName = authHelpers.getUserName() || 'User';
-
-    // Call functions
-    const startCall = async (type) => {
-        if (!recipientIdentifier) {
-            alert('Please select a recipient first');
-            return;
-        }
-
+    adminClient.onConnect = () => {
+      adminClient.subscribe('/topic/announcements.deleted', (msg) => {
         try {
-            setCallType(type);
-            setCallStatus('calling');
-            
-            const response = await axios.post(`${CHAT_SERVICE_URL}/call/start`, {
-                fromUser: selfIdentifier,
-                toUser: recipientIdentifier,
-                callType: type
-            });
-            
-            setRoomId(response.data.roomId);
-            console.log('Call started:', response.data);
+          const deletion = JSON.parse(msg.body || '{}');
+          setAnnouncements(prev => prev.filter(item => item.id !== deletion.id));
         } catch (error) {
-            console.error('Failed to start call:', error);
-            setCallStatus('idle');
-            alert('Failed to start call. Please try again.');
+          console.error('Error processing announcement deletion:', error);
         }
-    };
-
-    const endCall = async () => {
-        if (!roomId) return;
-
+      });
+      
+      adminClient.subscribe('/topic/polls.deleted', (msg) => {
         try {
-            await axios.post(`${CHAT_SERVICE_URL}/call/end`, {
-                roomId: roomId,
-                fromUser: selfIdentifier,
-                toUser: recipientIdentifier
-            });
-            
-            setCallStatus('ended');
-            setRoomId(null);
-            console.log('Call ended');
+          const deletion = JSON.parse(msg.body || '{}');
+          setPolls(prev => prev.filter(item => item.id !== deletion.id));
         } catch (error) {
-            console.error('Failed to end call:', error);
+          console.error('Error processing poll deletion:', error);
         }
+      });
     };
-
-    const resetCall = () => {
-        setCallStatus('idle');
-        setRoomId(null);
+    
+    chatClient.activate();
+    adminClient.activate();
+    stompRef.current = { chat: chatClient, admin: adminClient };
+    return () => {
+      chatClient.deactivate();
+      adminClient.deactivate();
     };
+  }, []);
 
-    return (
-        <div className="flex flex-col h-full gap-6">
-            {/* Header */}
-            <div className="bg-gradient-to-r from-indigo-600 via-blue-600 to-purple-600 text-white px-8 py-6 rounded-xl shadow-lg">
-                <h1 className="text-2xl font-bold">Live Communication Hub</h1>
-                <p className="text-indigo-100 text-sm mt-1">Real-time collaboration and messaging</p>
+  const fetchGlobal = async () => {
+    try {
+      console.log('🔄 Fetching announcements and polls...');
+      const [ra, rp] = await Promise.all([
+        apiClient.get(`/admin/company-updates/announcements/all`),
+        apiClient.get(`/admin/company-updates/polls/active`)
+      ]);
+      console.log('✅ Announcements fetched:', ra.data);
+      console.log('✅ Polls fetched:', rp.data);
+      setAnnouncements(ra.data || []);
+      setPolls(rp.data || []);
+      loadUserLikes(ra.data || []);
+      loadLikeCounts(ra.data || []);
+      loadComments(ra.data || []);
+      (rp.data || []).forEach(p => refreshPollResults(p.id));
+    } catch (error) {
+      console.error('❌ Error fetching communications:', error);
+      console.error('Error details:', error.response?.data || error.message);
+      setMessage({ type: 'error', text: 'Could not fetch communications.' });
+    }
+  };
+
+  const loadUserLikes = async (announcementsList) => {
+    const currentUser = authHelpers.getUserName() || 'User';
+    const likes = {};
+    
+    for (const ann of announcementsList) {
+      try {
+        const base = apiConfig.chatService.replace('/api/chat','/api/interactions');
+        const response = await fetch(`${base}/announcement/${ann.id}/interactions`);
+        const interactions = await response.json();
+        const userLike = interactions.find(i => 
+          i.userName === currentUser && i.type === 'LIKE'
+        );
+        likes[ann.id] = !!userLike;
+      } catch (error) {
+        likes[ann.id] = false;
+      }
+    }
+    
+    setUserLikes(likes);
+  };
+
+  const loadLikeCounts = async (announcementsList) => {
+    const counts = {};
+    
+    for (const ann of announcementsList) {
+      try {
+        const base = apiConfig.chatService.replace('/api/chat','/api/interactions');
+        const response = await fetch(`${base}/announcement/${ann.id}/likes/count`);
+        const result = await response.json();
+        counts[ann.id] = result.count || 0;
+      } catch (error) {
+        counts[ann.id] = 0;
+      }
+    }
+    
+    setLikeCounts(counts);
+  };
+
+  const loadComments = async (announcementsList) => {
+    const allComments = {};
+    
+    for (const ann of announcementsList) {
+      try {
+        const base = apiConfig.chatService.replace('/api/chat','/api/interactions');
+        const response = await fetch(`${base}/announcement/${ann.id}/interactions`);
+        const interactions = await response.json();
+        const commentList = interactions.filter(i => i.type === 'COMMENT');
+        allComments[ann.id] = commentList;
+      } catch (error) {
+        allComments[ann.id] = [];
+      }
+    }
+    
+    setComments(allComments);
+  };
+
+  const refreshPollResults = async (pollId) => {
+    try {
+      const base = apiConfig.chatService.replace('/api/chat','/api/interactions');
+      const res = await fetch(`${base}/poll/${pollId}/results`);
+      const results = await res.json();
+      setPollResults(prev => ({ ...prev, [pollId]: results || { totalVotes: 0, optionCounts: {} } }));
+    } catch {}
+  };
+
+  const handleCreateGlobalAnnouncement = async (e) => {
+    e.preventDefault();
+    try {
+      const payload = {
+        title: globalAnnouncement.title,
+        content: globalAnnouncement.content,
+        type: (globalAnnouncement.type || 'GENERAL').toUpperCase(),
+        targetAudience: 'ALL',
+        createdByName: myName
+      };
+      await apiClient.post(`/admin/company-updates/announcements/create`, payload);
+      setMessage({ type: 'success', text: 'Announcement posted successfully!' });
+      setGlobalAnnouncement({ title: '', content: '', type: 'GENERAL' });
+      fetchGlobal();
+      setTimeout(() => setMessage(null), 3000);
+    } catch (error) {
+      setMessage({ type: 'error', text: error?.response?.data?.error || 'Failed to post announcement.' });
+    }
+  };
+
+  const handleCreateGlobalPoll = async (e) => {
+    e.preventDefault();
+    try {
+      const pollData = {
+        question: globalPoll.question,
+        options: (globalPoll.options || []).filter(o => (o || '').trim() !== ''),
+        targetAudience: 'ALL',
+        createdByName: myName,
+        isActive: true
+      };
+      if (pollData.options.length < 2) { 
+        setMessage({ type: 'error', text: 'A poll needs at least two options.' }); 
+        return; 
+      }
+      await apiClient.post(`/admin/company-updates/polls/create`, pollData);
+      setMessage({ type: 'success', text: 'Poll created successfully!' });
+      setGlobalPoll({ question: '', options: [''] });
+      fetchGlobal();
+      setTimeout(() => setMessage(null), 3000);
+    } catch (error) {
+      setMessage({ type: 'error', text: error?.response?.data?.error || 'Failed to create poll.' });
+    }
+  };
+
+  const handlePollOptionChange = (index, value) => {
+    const next = [...(globalPoll.options || [])];
+    next[index] = value;
+    setGlobalPoll(p => ({ ...p, options: next }));
+  };
+
+  const likeAnnouncement = async (ann) => {
+    try {
+      const base = apiConfig.chatService.replace('/api/chat','/api/interactions');
+      const response = await fetch(`${base}/announcement/like`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ announcementId: ann.id, userName: authHelpers.getUserName() || 'User', type: 'LIKE' })
+      });
+      
+      if (!response.ok) return;
+      
+      const result = await response.json();
+      setUserLikes(prev => ({ ...prev, [ann.id]: result.liked }));
+      fetchGlobal();
+    } catch (error) {
+      console.error('Like error:', error);
+    }
+  };
+
+  const commentAnnouncement = async (ann, text) => {
+    const content = String(text || '').trim();
+    if (!content) return;
+    try {
+      const base = apiConfig.chatService.replace('/api/chat','/api/interactions');
+      await fetch(`${base}/announcement/comment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ announcementId: ann.id, userName: authHelpers.getUserName() || 'User', content, type: 'COMMENT' })
+      });
+      setCommentDrafts(p => ({ ...p, [ann.id]: '' }));
+      loadComments([ann]);
+    } catch {}
+  };
+
+  const votePoll = async (poll, selected) => {
+    if (!selected) return;
+    try {
+      const base = apiConfig.chatService.replace('/api/chat','/api/interactions');
+      await fetch(`${base}/poll/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pollId: poll.id, voterName: authHelpers.getUserName() || 'User', selectedOption: selected })
+      });
+      setPollChoice(p => ({ ...p, [poll.id]: '' }));
+      setUserVotes(p => ({ ...p, [poll.id]: selected }));
+      refreshPollResults(poll.id);
+    } catch {}
+  };
+
+  const deleteAnnouncement = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this announcement?')) return;
+    try {
+      await apiClient.delete(`/admin/company-updates/announcements/${id}`);
+      setMessage({ type: 'success', text: 'Announcement deleted successfully.' });
+      fetchGlobal();
+    } catch (err) {
+      setMessage({ type: 'error', text: err?.response?.data?.error || 'Failed to delete announcement' });
+    }
+  };
+
+  const deletePoll = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this poll?')) return;
+    try {
+      await apiClient.delete(`/admin/company-updates/polls/${id}`);
+      setMessage({ type: 'success', text: 'Poll deleted successfully.' });
+      fetchGlobal();
+    } catch (err) {
+      setMessage({ type: 'error', text: err?.response?.data?.error || 'Failed to delete poll' });
+    }
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+      <h1 className="text-3xl font-bold text-blue-700">Admin Communications</h1>
+
+      {message && (
+        <motion.div 
+          className={`p-4 rounded-lg ${message.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`} 
+          initial={{ y: -20, opacity: 0 }} 
+          animate={{ y: 0, opacity: 1 }}
+        >
+          {message.text}
+        </motion.div>
+      )}
+
+      <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-blue-600">
+        <h2 className="text-xl font-semibold mb-3">Create Global Announcement</h2>
+        <form onSubmit={handleCreateGlobalAnnouncement} className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <input 
+              className="p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" 
+              placeholder="Title" 
+              value={globalAnnouncement.title} 
+              onChange={e => setGlobalAnnouncement(p => ({ ...p, title: e.target.value }))} 
+              required 
+            />
+            <select 
+              className="p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" 
+              value={globalAnnouncement.type} 
+              onChange={e => setGlobalAnnouncement(p => ({ ...p, type: e.target.value }))}
+            >
+              <option value="GENERAL">GENERAL</option>
+              <option value="URGENT">URGENT</option>
+              <option value="POLICY">POLICY</option>
+              <option value="EVENT">EVENT</option>
+              <option value="UPDATE">UPDATE</option>
+            </select>
+          </div>
+          <textarea 
+            className="w-full p-3 border rounded-lg h-32 focus:ring-2 focus:ring-blue-500 focus:outline-none" 
+            placeholder="Content" 
+            value={globalAnnouncement.content} 
+            onChange={e => setGlobalAnnouncement(p => ({ ...p, content: e.target.value }))} 
+            required 
+          />
+          <div className="flex justify-end">
+            <button 
+              type="submit" 
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Post Announcement
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <div className="bg-white p-6 rounded-xl shadow-md border-l-4 border-indigo-600">
+        <h2 className="text-xl font-semibold mb-3">Create Global Poll</h2>
+        <form onSubmit={handleCreateGlobalPoll} className="space-y-3" onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}>
+          <input 
+            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none" 
+            placeholder="Poll Question" 
+            value={globalPoll.question} 
+            onChange={e => setGlobalPoll(p => ({ ...p, question: e.target.value }))} 
+            required 
+          />
+          <h3 className="font-medium text-sm text-gray-700">Options (Max 4)</h3>
+          {(globalPoll.options || []).slice(0, 4).map((opt, idx) => (
+            <div key={idx} className="flex gap-2">
+              <input 
+                className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none" 
+                placeholder={`Option ${idx + 1}`} 
+                value={opt} 
+                onChange={e => handlePollOptionChange(idx, e.target.value)} 
+              />
+              {idx === (globalPoll.options?.length || 0) - 1 && (globalPoll.options?.length || 0) < 4 && (
+                <button 
+                  type="button" 
+                  className="px-4 py-2 border rounded-lg hover:bg-gray-50 transition-colors" 
+                  onClick={() => setGlobalPoll(p => ({ ...p, options: [...(p.options || []), ''] }))}
+                >
+                  + Add
+                </button>
+              )}
             </div>
+          ))}
+          <div className="flex justify-end">
+            <button 
+              type="submit" 
+              className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              Launch Poll
+            </button>
+          </div>
+        </form>
+      </div>
 
-            {/* Main Content */}
-            <div className="flex-1 overflow-hidden flex gap-6">
-                {/* Left Sidebar - Recipient Selection & Controls */}
-                <div className="w-80 flex flex-col gap-4 flex-shrink-0">
-                    {/* Recipient Selection */}
-                    <div>
-                        <label className="block text-sm font-semibold text-gray-800 mb-2">Select Recipient</label>
-                        <RecipientSelectorComponent 
-                            names={directory}
-                            displayNames={nameMap}
-                            value={recipientIdentifier} 
-                            onChange={setRecipientIdentifier} 
-                        />
-                    </div>
+      <div>
+        <h2 className="text-2xl font-semibold text-blue-700 border-b-2 border-blue-600 pb-2">Announcements</h2>
+        <AnnouncementList 
+          items={announcements} 
+          onLike={likeAnnouncement} 
+          onComment={commentAnnouncement} 
+          onDelete={deleteAnnouncement} 
+          drafts={commentDrafts} 
+          setDrafts={setCommentDrafts} 
+          userLikes={userLikes} 
+          likeCounts={likeCounts} 
+          comments={comments} 
+          stompClient={stompRef.current?.chat}
+          theme="blue"
+        />
+      </div>
 
-                    {/* Call Controls */}
-                    {recipientIdentifier && (
-                        <div>
-                            <h3 className="text-sm font-semibold text-gray-800 mb-3">Voice & Video Calls</h3>
-                            <div className="space-y-2">
-                                {callStatus === 'idle' && (
-                                    <>
-                                        <button
-                                            onClick={() => startCall('voice')}
-                                            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm"
-                                        >
-                                            📞 Voice Call
-                                        </button>
-                                        <button
-                                            onClick={() => startCall('video')}
-                                            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm"
-                                        >
-                                            📹 Video Call
-                                        </button>
-                                    </>
-                                )}
-                                
-                                {callStatus === 'calling' && (
-                                    <div className="flex items-center justify-center gap-2 px-4 py-2 bg-yellow-100 text-yellow-800 rounded-lg border border-yellow-300 text-sm">
-                                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-yellow-600"></div>
-                                        <span className="font-medium">Calling...</span>
-                                    </div>
-                                )}
-                                
-                                {callStatus === 'in_call' && (
-                                    <button
-                                        onClick={endCall}
-                                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium text-sm"
-                                    >
-                                        📞 End Call
-                                    </button>
-                                )}
-                                
-                                {callStatus === 'ended' && (
-                                    <div className="flex flex-col gap-2">
-                                        <div className="text-center text-gray-600 text-sm font-medium py-1">Call ended</div>
-                                        <button
-                                            onClick={resetCall}
-                                            className="w-full px-3 py-1 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
-                                        >
-                                            Start New Call
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {!recipientIdentifier && (
-                        <div className="text-sm text-gray-600 py-4 text-center">
-                            <p className="font-medium">Select a recipient to begin</p>
-                        </div>
-                    )}
-                </div>
-
-                {/* Right Content - Chat Window */}
-                <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-                    {channelId ? (
-                        <ChatWindow 
-                            channelId={channelId} 
-                            selfName={currentUserName}
-                            selfIdentifier={selfIdentifier}
-                        />
-                    ) : (
-                        <div className="flex items-center justify-center h-full">
-                            <div className="text-center">
-                                <div className="text-6xl mb-4">💬</div>
-                                <p className="text-gray-500 font-medium">Select a recipient to start chatting</p>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// --- Custom RecipientSelectorComponent definition (REQUIRED to be here or correctly imported) ---
-const RecipientSelectorComponent = ({ names = [], displayNames = {}, value, onChange }) => {
-    return (
-        <select 
-            className="w-full border-2 border-indigo-200 rounded-lg px-4 py-3 text-gray-700 font-medium focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all bg-white hover:border-indigo-300"
-            value={value || ''}
-            onChange={e => onChange(e.target.value)}>
-            <option value="">Select a person</option>
-            {names.filter(Boolean).map(n => (
-                <option key={n} value={n}>
-                    {displayNames[n] || n} ({n})
-                </option>
-            ))}
-        </select>
-    );
+      <div>
+        <h2 className="text-2xl font-semibold text-indigo-700 border-b-2 border-indigo-600 pb-2">Polls</h2>
+        <PollList 
+          items={polls} 
+          resultsMap={pollResults} 
+          onVote={votePoll} 
+          onDelete={deletePoll} 
+          choice={pollChoice} 
+          setChoice={setPollChoice} 
+          userVotes={userVotes}
+          theme="blue"
+        />
+      </div>
+    </motion.div>
+  );
 };
 
 export default AdminLiveCommunication;

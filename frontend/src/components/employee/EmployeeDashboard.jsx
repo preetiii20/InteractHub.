@@ -1,23 +1,36 @@
 import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import axios from 'axios';
 import { authHelpers } from '../../config/auth';
+import CalendarComponent from '../common/CalendarComponent';
 
 const EMPLOYEE_SERVICE_URL = 'http://localhost:8084/api/employee';
 const MANAGER_SERVICE_URL = 'http://localhost:8083/api/manager';
 
 const EmployeeDashboard = () => {
     const [dashboard, setDashboard] = useState(null);
-    const [projects, setProjects] = useState([]);
+    const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
     useEffect(() => {
         fetchDashboard();
-        fetchProjects();
     }, []);
 
     const fetchDashboard = async () => {
         try {
+            // Fetch users first for calendar
+            console.log('📡 Fetching users for Employee calendar...');
+            try {
+                const usersResponse = await axios.get('http://localhost:8081/api/admin/users/all');
+                if (usersResponse.data && Array.isArray(usersResponse.data)) {
+                    setUsers(usersResponse.data);
+                    console.log('✅ Users fetched for Employee calendar:', usersResponse.data.length);
+                }
+            } catch (userError) {
+                console.log('ℹ️ Could not fetch users for calendar:', userError.message);
+            }
+
             const userId = authHelpers.getUserId();
             const email = authHelpers.getUserEmail();
             const role = authHelpers.getUserRole();
@@ -69,11 +82,9 @@ const EmployeeDashboard = () => {
             );
             
             console.log('✅ Projects/Tasks data received:', tasksResponse.data);
-            setProjects(tasksResponse.data || []);
         } catch (err) {
             console.error('❌ Projects fetch error:', err);
             // Don't set error state, just log it
-            setProjects([]);
         }
     };
 
@@ -127,7 +138,7 @@ const EmployeeDashboard = () => {
     };
 
     return (
-        <div className="space-y-6">
+        <div className="w-full space-y-6">
             <div className="flex items-center justify-between">
                 <h1 className="text-3xl font-bold text-gray-800">My Dashboard</h1>
             </div>
@@ -158,9 +169,9 @@ const EmployeeDashboard = () => {
             {/* Assigned Projects/Tasks Section */}
             <div className="bg-white rounded-lg shadow p-6">
                 <h2 className="text-2xl font-semibold mb-4">My Assigned Projects</h2>
-                {projects && projects.length > 0 ? (
+                {dashboard.tasks && dashboard.tasks.length > 0 ? (
                     <div className="space-y-3">
-                        {projects.map(task => (
+                        {dashboard.tasks.map(task => (
                             <div key={task.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
                                 <div className="flex items-start justify-between">
                                     <div className="flex-1">
@@ -208,9 +219,28 @@ const EmployeeDashboard = () => {
                     <p className="text-gray-500">No recent activity</p>
                 )}
             </div>
+
+            {/* Calendar Widget */}
+            <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+            >
+                <CalendarComponent 
+                    role="employee"
+                    eventTypes={{
+                        personal: { bg: 'bg-blue-100', text: 'text-blue-700', badge: 'bg-blue-500', border: 'border-blue-300' },
+                        important: { bg: 'bg-red-100', text: 'text-red-700', badge: 'bg-red-500', border: 'border-red-300' },
+                        reminder: { bg: 'bg-yellow-100', text: 'text-yellow-700', badge: 'bg-yellow-500', border: 'border-yellow-300' },
+                        holiday: { bg: 'bg-green-100', text: 'text-green-700', badge: 'bg-green-500', border: 'border-green-300' }
+                    }}
+                    canCreateGlobalEvents={false}
+                    canScheduleMeetings={true}
+                    userList={users}
+                />
+            </motion.div>
         </div>
     );
 };
 
 export default EmployeeDashboard;
-

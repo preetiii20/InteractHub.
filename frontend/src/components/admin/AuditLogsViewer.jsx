@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import axios from 'axios';
 import apiConfig from '../../config/api';
+import apiClient from '../../services/apiClient';
 
 const AuditLogsViewer = () => {
   const [logs, setLogs] = useState([]);
@@ -18,7 +19,7 @@ const AuditLogsViewer = () => {
 
   const fetchAuditLogs = async () => {
     try {
-      const response = await axios.get(`${apiConfig.adminService}/audit-logs`);
+      const response = await apiClient.get(`/admin/audit-logs`);
       setLogs(response.data || []);
     } catch (error) {
       console.error('Error fetching audit logs:', error);

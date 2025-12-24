@@ -12,7 +12,17 @@ public class AuditLogService {
     private AuditLogRepository auditLogRepository;
     
     /**
-     * Log an action - method signature that your existing code uses
+     * Log an action with organization context
+     */
+    public void log(String userEmail, String action, String entityType, String entityId, String description, String ipAddress, String status, Long organizationId) {
+        AuditLog auditLog = new AuditLog(userEmail, action, entityType, description, ipAddress);
+        auditLog.setOrganizationId(organizationId); // Set organization ID
+        auditLogRepository.save(auditLog);
+        System.out.println("📝 Audit Log: " + action + " by " + userEmail + " (Org: " + organizationId + ")");
+    }
+    
+    /**
+     * Log an action - method signature that your existing code uses (backward compatible)
      */
     public void log(String userEmail, String action, String entityType, String entityId, String description, String ipAddress, String status) {
         AuditLog auditLog = new AuditLog(userEmail, action, entityType, description, ipAddress);
@@ -25,6 +35,15 @@ public class AuditLogService {
      */
     public void log(String userEmail, String action, String description) {
         AuditLog auditLog = new AuditLog(userEmail, action, null, description, null);
+        auditLogRepository.save(auditLog);
+    }
+    
+    /**
+     * Simple log method with organization context
+     */
+    public void log(String userEmail, String action, String description, Long organizationId) {
+        AuditLog auditLog = new AuditLog(userEmail, action, null, description, null);
+        auditLog.setOrganizationId(organizationId);
         auditLogRepository.save(auditLog);
     }
 }

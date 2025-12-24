@@ -12,7 +12,10 @@ import jakarta.persistence.Table;
 
 @Entity
 @Table(name="chat_group_messages",
-       indexes = @Index(name="idx_groupmsg_group", columnList="groupId"))
+       indexes = {
+           @Index(name="idx_groupmsg_group", columnList="groupId"),
+           @Index(name="idx_groupmsg_org", columnList="organizationId")
+       })
 public class GroupMessage {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -21,6 +24,7 @@ public class GroupMessage {
     @Column(nullable=false) private String senderName;
     @Column(nullable=false, length=5000) private String content;
     @Column(nullable=false) private Instant sentAt = Instant.now();
+    @Column(name="organization_id") private Long organizationId; // Organization isolation
     
     // File upload fields
     @Column(name="file_url") private String fileUrl;
@@ -52,6 +56,7 @@ public class GroupMessage {
     public String getSenderName() { return senderName; } public void setSenderName(String senderName) { this.senderName = senderName; }
     public String getContent() { return content; } public void setContent(String content) { this.content = content; }
     public Instant getSentAt() { return sentAt; } public void setSentAt(Instant sentAt) { this.sentAt = sentAt; }
+    public Long getOrganizationId() { return organizationId; } public void setOrganizationId(Long organizationId) { this.organizationId = organizationId; }
     public String getFileUrl() { return fileUrl; } public void setFileUrl(String fileUrl) { this.fileUrl = fileUrl; }
     public String getFileName() { return fileName; } public void setFileName(String fileName) { this.fileName = fileName; }
     public String getFileType() { return fileType; } public void setFileType(String fileType) { this.fileType = fileType; }

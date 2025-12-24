@@ -341,6 +341,12 @@ public class AdminService {
     public List<User> getAllUsersByOrganization(Long organizationId) { 
         return userRepository.findByOrganizationId(organizationId); 
     }
+    public User getUserByEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return null;
+        }
+        return userRepository.findByEmail(email).orElse(null);
+    }
     public List<User> getUsersByRole(User.Role role) { return userRepository.findByRole(role); }
     public List<User> getUsersByRoleAndOrganization(User.Role role, Long organizationId) { 
         return userRepository.findByOrganizationIdAndRole(organizationId, role); 
@@ -419,6 +425,23 @@ public class AdminService {
     public Map<String, Object> getAuditLogsPaginated(int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
         Page<AuditLog> auditLogPage = auditLogRepository.findAllByOrderByTimestampDesc(pageable);
+        
+        Map<String, Object> response = new HashMap<>();
+        response.put("auditLogs", auditLogPage.getContent());
+        response.put("currentPage", auditLogPage.getNumber());
+        response.put("totalPages", auditLogPage.getTotalPages());
+        response.put("totalElements", auditLogPage.getTotalElements());
+        response.put("size", auditLogPage.getSize());
+        
+        return response;
+    }
+    
+    public Map<String, Object> getAuditLogsPaginated(int page, int size, Long organizationId) {
+        Pageable pageable = PageRequest.of(page, size);
+        // Use org-scoped query if organizationId is provided
+        Page<AuditLog> auditLogPage = organizationId != null ? 
+            auditLogRepository.findByOrganizationIdOrderByTimestampDesc(organizationId, pageable) :
+            auditLogRepository.findAllByOrderByTimestampDesc(pageable);
         
         Map<String, Object> response = new HashMap<>();
         response.put("auditLogs", auditLogPage.getContent());

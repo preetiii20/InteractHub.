@@ -10,4 +10,8 @@ import com.interacthub.chat.model.GroupMessage;
 @Repository
 public interface GroupMessageRepository extends JpaRepository<GroupMessage, Long> {
     List<GroupMessage> findByGroupIdOrderBySentAtAsc(String groupId);
+    
+    // Organization-scoped queries
+    List<GroupMessage> findByGroupIdAndOrganizationIdOrderBySentAtAsc(String groupId, Long organizationId);
+    List<GroupMessage> findByOrganizationId(Long organizationId);
 }

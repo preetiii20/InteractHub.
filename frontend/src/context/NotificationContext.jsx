@@ -12,6 +12,13 @@ export const NotificationProvider = ({ children }) => {
   }, []);
 
   const addNotification = useCallback((notification) => {
+    console.log('🔔 addNotification called with:', notification);
+    
+    if (!notification) {
+      console.warn('🔔 addNotification received null/undefined notification');
+      return;
+    }
+
     const id = `notif-${Date.now()}-${Math.random()}`;
     const newNotification = {
       id,
@@ -20,26 +27,41 @@ export const NotificationProvider = ({ children }) => {
     };
 
     console.log('🔔 Adding global notification to state:', newNotification);
-    setNotifications(prev => [...prev, newNotification]);
+    console.log('🔔 Current notifications count before add:', notifications.length);
+    
+    setNotifications(prev => {
+      const updated = [...prev, newNotification];
+      console.log('🔔 Updated notifications count:', updated.length);
+      return updated;
+    });
 
-    // Auto-dismiss after 8 seconds (unless it's persistent)
-    if (!notification.persistent) {
-      setTimeout(() => {
+    // Auto-dismiss after 8 seconds (unless it's persistent or meeting-cancelled)
+    const shouldAutoDismiss = !notification.persistent && notification.type !== 'meeting-cancelled';
+    if (shouldAutoDismiss) {
+      const timeoutId = setTimeout(() => {
+        console.log('🔔 Auto-dismissing notification:', id);
         removeNotification(id);
       }, 8000);
+      return () => clearTimeout(timeoutId);
     }
 
     return id;
-  }, [removeNotification]);
+  }, [removeNotification, notifications.length]);
 
   // Subscribe to global notifications on mount
   useEffect(() => {
     console.log('🔔 NotificationProvider subscribing to global notifications');
+    console.log('🔔 Current listener count:', globalNotificationService.getListenerCount());
+    
     const unsubscribe = globalNotificationService.subscribe('notification-context', (notification) => {
       console.log('🔔 NotificationContext received global notification:', notification);
+      console.log('🔔 Notification type:', notification.type);
+      console.log('🔔 Notification title:', notification.title);
       addNotification(notification);
     });
 
+    console.log('🔔 Subscription complete. Listener count:', globalNotificationService.getListenerCount());
+    
     return unsubscribe;
   }, [addNotification]);
 

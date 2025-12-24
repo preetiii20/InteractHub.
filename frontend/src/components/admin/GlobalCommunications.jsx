@@ -3,6 +3,7 @@ import axios from 'axios';
 import { motion } from 'framer-motion';
 import apiConfig from '../../config/api';
 import { authHelpers } from '../../config/auth';
+import apiClient from '../../services/apiClient';
 import AnnouncementList from '../shared/AnnouncementList';
 import PollList from '../shared/PollList';
 import SockJS from 'sockjs-client';
@@ -28,50 +29,59 @@ const GlobalCommunications = () => {
 
   const loadAll = async () => {
     try {
-      console.log('Loading communications...');
+      console.log('🔄 Loading communications...');
       
-      // Try target-specific endpoint first, fallback to all announcements
       let announcementsData = [];
       let pollsData = [];
       
+      // Load announcements
       try {
-        const ra = await axios.get(`${apiConfig.adminService}/announcements/target/ALL`);
+        console.log('📡 Fetching from /admin/announcements/target/ALL');
+        const userEmail = localStorage.getItem('userEmail');
+        const headers = userEmail ? { 'X-User-Email': userEmail } : {};
+        const ra = await apiClient.get(`/admin/announcements/target/ALL`, { headers });
         announcementsData = ra.data || [];
+        console.log('✅ Announcements loaded:', announcementsData.length, 'items');
       } catch (error) {
-        console.log('Fallback: Loading all announcements...');
-        const ra = await axios.get(`${apiConfig.adminService}/announcements`);
-        announcementsData = ra.data || [];
+        console.error('❌ Error loading announcements:', error);
+        console.error('Error details:', error.response?.status, error.response?.data);
+        setMessage({ type: 'error', text: `Failed to load announcements: ${error.response?.data?.error || error.message}` });
+        announcementsData = [];
       }
       
+      // Load polls
       try {
-        const rp = await axios.get(`${apiConfig.adminService}/polls/target/ALL`);
+        console.log('📡 Fetching from /admin/polls/target/ALL');
+        const userEmail = localStorage.getItem('userEmail');
+        const headers = userEmail ? { 'X-User-Email': userEmail } : {};
+        const rp = await apiClient.get(`/admin/polls/target/ALL`, { headers });
         pollsData = rp.data || [];
+        console.log('✅ Polls loaded:', pollsData.length, 'items');
       } catch (error) {
-        console.log('Fallback: Loading all polls...');
-        const rp = await axios.get(`${apiConfig.adminService}/polls`);
-        pollsData = rp.data || [];
+        console.error('❌ Error loading polls:', error);
+        console.error('Error details:', error.response?.status, error.response?.data);
+        pollsData = [];
       }
       
-      console.log('Announcements loaded:', announcementsData);
-      console.log('Polls loaded:', pollsData);
+      console.log('📊 Final announcements:', announcementsData.length);
+      console.log('📊 Final polls:', pollsData.length);
       
       setAnnouncements(announcementsData);
       setPolls(pollsData);
-      pollsData.forEach(p => refreshPollResults(p.id));
+      
+      if (pollsData && pollsData.length > 0) {
+        pollsData.forEach(p => refreshPollResults(p.id));
+      }
       
       // Load additional data only if we have announcements
       if (announcementsData && announcementsData.length > 0) {
-        // Load user's current like status for all announcements
         loadUserLikes(announcementsData);
-        // Load like counts for all announcements
         loadLikeCounts(announcementsData);
-        // Load comments for all announcements
         loadComments(announcementsData);
       }
     } catch (error) {
       console.error('Error loading communications:', error);
       setMessage({ type: 'error', text: `Failed to fetch communications: ${error.message}` });
-      // Set empty arrays on error
       setAnnouncements([]);
       setPolls([]);
     }
@@ -343,42 +353,58 @@ const GlobalCommunications = () => {
     } catch {}
   };
 
-  // Create ALL-only
   const createAnnouncement = async (e) => {
     e.preventDefault();
     try {
-      await axios.post(`${apiConfig.adminService}/announcements`, {
+      console.log('📤 Creating announcement:', formAnn);
+      const userEmail = localStorage.getItem('userEmail');
+      const headers = userEmail ? { 'X-User-Email': userEmail } : {};
+      
+      const response = await apiClient.post(`/admin/announcements`, {
         title: formAnn.title,
         content: formAnn.content,
         type: (formAnn.type || 'GENERAL').toUpperCase(),
         targetAudience: 'ALL',
         createdByName: authHelpers.getUserName() || 'User'
-      });
+      }, { headers });
+      console.log('✅ Announcement created:', response.data);
       setFormAnn({ title: '', content: '', type: 'GENERAL' });
       setMessage({ type: 'success', text: 'Announcement posted.' });
       loadAll();
     } catch (err) {
-      setMessage({ type: 'error', text: err?.response?.data?.error || 'Failed to post announcement' });
+      console.error('❌ Error creating announcement:', err);
+      const errorMsg = err?.response?.data?.error || err?.message || 'Failed to post announcement';
+      setMessage({ type: 'error', text: errorMsg });
     }
   };
 
   const createPoll = async (e) => {
     e.preventDefault();
     const options = (formPoll.options || []).map(o => (o || '').trim()).filter(Boolean);
-    if (options.length < 2) { setMessage({ type: 'error', text: 'A poll needs at least two options.' }); return; }
+    if (options.length < 2) { 
+      setMessage({ type: 'error', text: 'A poll needs at least two options.' }); 
+      return; 
+    }
     try {
-      await axios.post(`${apiConfig.adminService}/polls`, {
+      console.log('📤 Creating poll:', formPoll);
+      const userEmail = localStorage.getItem('userEmail');
+      const headers = userEmail ? { 'X-User-Email': userEmail } : {};
+      
+      const response = await apiClient.post(`/admin/polls`, {
         question: formPoll.question,
         options,
         targetAudience: 'ALL',
         createdByName: authHelpers.getUserName() || 'User',
         isActive: true
-      });
+      }, { headers });
+      console.log('✅ Poll created:', response.data);
       setFormPoll({ question: '', options: [''] });
       setMessage({ type: 'success', text: 'Poll created.' });
       loadAll();
     } catch (err) {
-      setMessage({ type: 'error', text: err?.response?.data?.error || 'Failed to create poll' });
+      console.error('❌ Error creating poll:', err);
+      const errorMsg = err?.response?.data?.error || err?.message || 'Failed to create poll';
+      setMessage({ type: 'error', text: errorMsg });
     }
   };
 
@@ -441,9 +467,11 @@ const GlobalCommunications = () => {
   const deleteAnnouncement = async (id) => {
     if (!window.confirm('Are you sure you want to delete this announcement?')) return;
     try {
+      const userEmail = localStorage.getItem('userEmail');
+      const headers = userEmail ? { 'X-User-Email': userEmail } : {};
       const userName = authHelpers.getUserName() || 'User';
-      await axios.delete(`${apiConfig.adminService}/announcements/${id}`, {
-        headers: { 'X-User-Name': userName }
+      await apiClient.delete(`/admin/announcements/${id}`, {
+        headers: { 'X-User-Name': userName, ...headers }
       });
       setMessage({ type: 'success', text: 'Announcement deleted successfully.' });
       loadAll();
@@ -455,9 +483,11 @@ const GlobalCommunications = () => {
   const deletePoll = async (id) => {
     if (!window.confirm('Are you sure you want to delete this poll?')) return;
     try {
+      const userEmail = localStorage.getItem('userEmail');
+      const headers = userEmail ? { 'X-User-Email': userEmail } : {};
       const userName = authHelpers.getUserName() || 'User';
-      await axios.delete(`${apiConfig.adminService}/polls/${id}`, {
-        headers: { 'X-User-Name': userName }
+      await apiClient.delete(`/admin/polls/${id}`, {
+        headers: { 'X-User-Name': userName, ...headers }
       });
       setMessage({ type: 'success', text: 'Poll deleted successfully.' });
       loadAll();

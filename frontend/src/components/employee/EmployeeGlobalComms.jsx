@@ -5,6 +5,7 @@ import { Client } from '@stomp/stompjs';
 import { motion } from 'framer-motion';
 import apiConfig from '../../config/api';
 import { authHelpers } from '../../config/auth';
+import apiClient from '../../services/apiClient';
 import AnnouncementList from '../shared/AnnouncementList';
 import PollList from '../shared/PollList';
 
@@ -96,17 +97,24 @@ const EmployeeGlobalComms = () => {
 
   const fetchGlobal = async () => {
     try {
+      console.log('📡 Fetching employee announcements and polls...');
+      const userEmail = localStorage.getItem('userEmail');
+      const headers = userEmail ? { 'X-User-Email': userEmail } : {};
+      
       const [ra, rp] = await Promise.all([
-        axios.get(`${apiConfig.adminService}/announcements/target/ALL`),
-        axios.get(`${apiConfig.adminService}/polls/target/ALL`)
+        apiClient.get(`/admin/announcements/target/ALL`, { headers }),
+        apiClient.get(`/admin/polls/target/ALL`, { headers })
       ]);
+      console.log('✅ Employee announcements loaded:', ra.data?.length || 0);
+      console.log('✅ Employee polls loaded:', rp.data?.length || 0);
       setAnnouncements(ra.data || []);
       setPolls(rp.data || []);
       loadUserLikes(ra.data || []);
       loadLikeCounts(ra.data || []);
       loadComments(ra.data || []);
       (rp.data || []).forEach(p => refreshPollResults(p.id));
-    } catch {
+    } catch (error) {
+      console.error('❌ Error fetching employee communications:', error);
       setMessage({ type: 'error', text: 'Could not fetch communications.' });
     }
   };
@@ -179,6 +187,9 @@ const EmployeeGlobalComms = () => {
   const handleCreateGlobalAnnouncement = async (e) => {
     e.preventDefault();
     try {
+      const userEmail = localStorage.getItem('userEmail');
+      const headers = userEmail ? { 'X-User-Email': userEmail } : {};
+      
       const payload = {
         title: globalAnnouncement.title,
         content: globalAnnouncement.content,
@@ -186,12 +197,14 @@ const EmployeeGlobalComms = () => {
         targetAudience: 'ALL',
         createdByName: myName
       };
-      await axios.post(`${apiConfig.adminService}/announcements`, payload);
+      console.log('📤 Creating announcement:', payload);
+      await apiClient.post(`/admin/announcements`, payload, { headers });
       setMessage({ type: 'success', text: 'Announcement posted successfully!' });
       setGlobalAnnouncement({ title: '', content: '', type: 'GENERAL' });
       fetchGlobal();
       setTimeout(() => setMessage(null), 3000);
     } catch (error) {
+      console.error('❌ Error creating announcement:', error);
       setMessage({ type: 'error', text: error?.response?.data?.error || 'Failed to post announcement.' });
     }
   };
@@ -199,6 +212,9 @@ const EmployeeGlobalComms = () => {
   const handleCreateGlobalPoll = async (e) => {
     e.preventDefault();
     try {
+      const userEmail = localStorage.getItem('userEmail');
+      const headers = userEmail ? { 'X-User-Email': userEmail } : {};
+      
       const pollData = {
         question: globalPoll.question,
         options: (globalPoll.options || []).filter(o => (o || '').trim() !== ''),
@@ -210,12 +226,14 @@ const EmployeeGlobalComms = () => {
         setMessage({ type: 'error', text: 'A poll needs at least two options.' }); 
         return; 
       }
-      await axios.post(`${apiConfig.adminService}/polls`, pollData);
+      console.log('📤 Creating poll:', pollData);
+      await apiClient.post(`/admin/polls`, pollData, { headers });
       setMessage({ type: 'success', text: 'Poll created successfully!' });
       setGlobalPoll({ question: '', options: [''] });
       fetchGlobal();
       setTimeout(() => setMessage(null), 3000);
     } catch (error) {
+      console.error('❌ Error creating poll:', error);
       setMessage({ type: 'error', text: error?.response?.data?.error || 'Failed to create poll.' });
     }
   };
@@ -278,9 +296,11 @@ const EmployeeGlobalComms = () => {
   const deleteAnnouncement = async (id) => {
     if (!window.confirm('Are you sure you want to delete this announcement?')) return;
     try {
+      const userEmail = localStorage.getItem('userEmail');
+      const headers = userEmail ? { 'X-User-Email': userEmail } : {};
       const userName = authHelpers.getUserName() || 'User';
-      await axios.delete(`${apiConfig.adminService}/announcements/${id}`, {
-        headers: { 'X-User-Name': userName }
+      await apiClient.delete(`/admin/announcements/${id}`, {
+        headers: { 'X-User-Name': userName, ...headers }
       });
       setMessage({ type: 'success', text: 'Announcement deleted successfully.' });
       fetchGlobal();
@@ -292,9 +312,11 @@ const EmployeeGlobalComms = () => {
   const deletePoll = async (id) => {
     if (!window.confirm('Are you sure you want to delete this poll?')) return;
     try {
+      const userEmail = localStorage.getItem('userEmail');
+      const headers = userEmail ? { 'X-User-Email': userEmail } : {};
       const userName = authHelpers.getUserName() || 'User';
-      await axios.delete(`${apiConfig.adminService}/polls/${id}`, {
-        headers: { 'X-User-Name': userName }
+      await apiClient.delete(`/admin/polls/${id}`, {
+        headers: { 'X-User-Name': userName, ...headers }
       });
       setMessage({ type: 'success', text: 'Poll deleted successfully.' });
       fetchGlobal();

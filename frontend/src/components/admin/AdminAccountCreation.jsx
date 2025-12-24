@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import apiConfig from '../../config/api';
+import apiClient from '../../services/apiClient';
 
 const initialUser = { firstName: '', lastName: '', email: '', password: '', phoneNumber: '', departmentId: '' };
 
@@ -17,9 +18,12 @@ const AdminAccountCreation = () => {
     setMessage(null);
     setLoading(true);
     try {
+      const userEmail = localStorage.getItem('userEmail');
+      const headers = userEmail ? { 'X-User-Email': userEmail } : {};
+      
       const payload = { ...form, role };
       
-      const response = await axios.post(`${apiConfig.adminService}/users`, payload);
+      const response = await apiClient.post(`/admin/users`, payload, { headers });
       
       if (response.status === 200 || response.status === 201) {
         setMessage({ type: 'success', text: `${role} account created successfully!` });

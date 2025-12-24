@@ -12,4 +12,9 @@ import java.util.List;
 public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
     Page<AuditLog> findAllByOrderByTimestampDesc(Pageable pageable);
     List<AuditLog> findTop100ByOrderByTimestampDesc();
+    
+    // Organization-scoped queries
+    Page<AuditLog> findByOrganizationIdOrderByTimestampDesc(Long organizationId, Pageable pageable);
+    List<AuditLog> findByOrganizationIdOrderByTimestampDesc(Long organizationId);
+    List<AuditLog> findTop100ByOrganizationIdOrderByTimestampDesc(Long organizationId);
 }

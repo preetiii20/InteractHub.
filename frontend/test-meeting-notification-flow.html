@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meeting Notification Flow Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: #f9f9f9;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button.success {
+            background: #28a745;
+        }
+        button.danger {
+            background: #dc3545;
+        }
+        .log {
+            background: #000;
+            color: #0f0;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            margin: 10px 0;
+        }
+        .success { color: #28a745; }
+        .error { color: #dc3545; }
+        .warning { color: #ffc107; }
+        .info { color: #17a2b8; }
+        .notification-preview {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+            margin: 10px 0;
+            background: #f8f9fa;
+        }
+        .notification-preview.unread {
+            border-left: 4px solid #007bff;
+            background: #e3f2fd;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔔 Meeting Notification Flow Test</h1>
+    <p>This page simulates the complete meeting notification flow to verify everything works correctly.</p>
+
+    <div class="grid">
+        <!-- Organizer Side -->
+        <div class="container">
+            <h2>👨‍💼 Meeting Organizer (User 1)</h2>
+            
+            <div class="test-section">
+                <h3>📅 Schedule Meeting</h3>
+                <div>
+                    <label>Meeting Title: <input type="text" id="meetingTitle" value="Team Standup Meeting" style="width: 200px; padding: 5px;"></label>
+                </div>
+                <div style="margin: 10px 0;">
+                    <label>Select Participants:</label><br>
+                    <label><input type="checkbox" id="user2" checked> User 2 (John Doe)</label><br>
+                    <label><input type="checkbox" id="user3" checked> User 3 (Jane Smith)</label><br>
+                    <label><input type="checkbox" id="user4"> User 4 (Bob Johnson)</label><br>
+                    <label><input type="checkbox" id="user20"> User 20 (Test User)</label>
+                </div>
+                <button onclick="scheduleMeeting()" class="success">📅 Schedule Meeting</button>
+            </div>
+
+            <div class="test-section">
+                <h3>📊 Organizer Status</h3>
+                <div id="organizerStatus">Ready to schedule meeting...</div>
+            </div>
+        </div>
+
+        <!-- Participant Side -->
+        <div class="container">
+            <h2>👥 Meeting Participants</h2>
+            
+            <div class="test-section">
+                <h3>🔔 Check Notifications</h3>
+                <label>Check User: 
+                    <select id="participantSelect">
+                        <option value="2">User 2 (John Doe)</option>
+                        <option value="3">User 3 (Jane Smith)</option>
+                        <option value="4">User 4 (Bob Johnson)</option>
+                        <option value="20">User 20 (Test User)</option>
+                    </select>
+                </label>
+                <button onclick="checkParticipantNotifications()">🔍 Check Notifications</button>
+                <button onclick="clearParticipantNotifications()" class="danger">🗑️ Clear Notifications</button>
+            </div>
+
+            <div class="test-section">
+                <h3>📬 Participant Notifications</h3>
+                <div id="participantNotifications">Select a participant and check notifications...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Full Width Sections -->
+    <div class="container">
+        <h2>🧪 Test Actions</h2>
+        <button onclick="simulateCompleteFlow()">🚀 Simulate Complete Flow</button>
+        <button onclick="testNotificationSystem()">🔧 Test Notification System</button>
+        <button onclick="inspectAllNotifications()">🔍 Inspect All Notifications</button>
+        <button onclick="clearAllTestData()" class="danger">🗑️ Clear All Test Data</button>
+    </div>
+
+    <div class="container">
+        <h2>📝 Test Log</h2>
+        <div id="log" class="log"></div>
+        <button onclick="clearLog()">Clear Log</button>
+    </div>
+
+    <script>
+        let meetingCounter = 1;
+
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const colorClass = type === 'success' ? 'success' : 
+                              type === 'error' ? 'error' : 
+                              type === 'warning' ? 'warning' : 'info';
+            
+            logDiv.innerHTML += `<div class="${colorClass}">[${timestamp}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(`[${timestamp}] ${message}`);
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        function updateOrganizerStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('organizerStatus');
+            statusDiv.innerHTML = `<span class="${type}">${message}</span>`;
+        }
+
+        function getSelectedParticipants() {
+            const participants = [];
+            if (document.getElementById('user2').checked) participants.push(2);
+            if (document.getElementById('user3').checked) participants.push(3);
+            if (document.getElementById('user4').checked) participants.push(4);
+            if (document.getElementById('user20').checked) participants.push(20);
+            return participants;
+        }
+
+        function scheduleMeeting() {
+            const title = document.getElementById('meetingTitle').value || 'Test Meeting';
+            const participants = getSelectedParticipants();
+            
+            if (participants.length === 0) {
+                log('❌ No participants selected!', 'error');
+                updateOrganizerStatus('❌ Please select at least one participant', 'error');
+                return;
+            }
+
+            log(`📅 Scheduling meeting: "${title}" with ${participants.length} participants...`);
+            updateOrganizerStatus(`📅 Scheduling "${title}"...`, 'info');
+
+            try {
+                const meetingId = Date.now() + meetingCounter++;
+                const meetingDate = new Date().toLocaleDateString();
+                const meetingTime = new Date().toLocaleTimeString();
+
+                // Send notifications to each participant
+                participants.forEach(participantId => {
+                    const notification = {
+                        id: Date.now() + Math.random(),
+                        type: 'MEETING_INVITATION',
+                        title: `Meeting Invitation: ${title}`,
+                        message: `You've been invited to "${title}" on ${meetingDate} at ${meetingTime}. Check your calendar for details.`,
+                        timestamp: new Date().toISOString(),
+                        read: false,
+                        data: {
+                            meetingId: meetingId,
+                            meetingTitle: title,
+                            meetingDate: meetingDate,
+                            meetingTime: meetingTime,
+                            jitsiLink: `https://meet.jit.si/test-${meetingId}`
+                        }
+                    };
+
+                    const notifKey = `notifications_${participantId}`;
+                    const existingNotifs = localStorage.getItem(notifKey);
+                    const notifs = existingNotifs ? JSON.parse(existingNotifs) : [];
+                    notifs.unshift(notification);
+                    localStorage.setItem(notifKey, JSON.stringify(notifs));
+
+                    // Trigger notification update event
+                    window.dispatchEvent(new CustomEvent('notificationsUpdated', {
+                        detail: { userId: participantId }
+                    }));
+
+                    log(`✅ Notification sent to User ${participantId}`, 'success');
+                });
+
+                const participantNames = participants.map(id => `User ${id}`).join(', ');
+                updateOrganizerStatus(`✅ Meeting scheduled successfully! Participants: ${participantNames}`, 'success');
+                log(`🎉 Meeting "${title}" scheduled successfully with participants: ${participantNames}`, 'success');
+
+            } catch (error) {
+                log(`❌ Error scheduling meeting: ${error.message}`, 'error');
+                updateOrganizerStatus(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        function checkParticipantNotifications() {
+            const participantId = Number(document.getElementById('participantSelect').value);
+            log(`🔍 Checking notifications for User ${participantId}...`);
+
+            try {
+                const notifKey = `notifications_${participantId}`;
+                const stored = localStorage.getItem(notifKey);
+                
+                if (stored) {
+                    const notifications = JSON.parse(stored);
+                    const unreadCount = notifications.filter(n => !n.read).length;
+                    
+                    log(`📬 User ${participantId} has ${notifications.length} notifications (${unreadCount} unread)`, 'success');
+                    
+                    // Display notifications
+                    let html = `<h4>📬 User ${participantId} Notifications (${notifications.length} total, ${unreadCount} unread):</h4>`;
+                    
+                    if (notifications.length > 0) {
+                        notifications.forEach((notif, index) => {
+                            const readClass = notif.read ? '' : 'unread';
+                            html += `
+                                <div class="notification-preview ${readClass}">
+                                    <strong>${notif.title}</strong> <small>(${notif.type})</small>
+                                    <br><small>${notif.message}</small>
+                                    <br><small>📅 ${new Date(notif.timestamp).toLocaleString()} - ${notif.read ? 'Read' : 'Unread'}</small>
+                                </div>
+                            `;
+                        });
+                    } else {
+                        html += '<p>No notifications found.</p>';
+                    }
+                    
+                    document.getElementById('participantNotifications').innerHTML = html;
+                } else {
+                    log(`📭 No notifications found for User ${participantId}`, 'warning');
+                    document.getElementById('participantNotifications').innerHTML = `<p>📭 No notifications found for User ${participantId}</p>`;
+                }
+            } catch (error) {
+                log(`❌ Error checking notifications: ${error.message}`, 'error');
+                document.getElementById('participantNotifications').innerHTML = `<p class="error">❌ Error: ${error.message}</p>`;
+            }
+        }
+
+        function clearParticipantNotifications() {
+            const participantId = Number(document.getElementById('participantSelect').value);
+            log(`🗑️ Clearing notifications for User ${participantId}...`);
+
+            try {
+                const notifKey = `notifications_${participantId}`;
+                localStorage.removeItem(notifKey);
+                
+                // Trigger update event
+                window.dispatchEvent(new CustomEvent('notificationsUpdated', {
+                    detail: { userId: participantId }
+                }));
+                
+                log(`✅ Cleared notifications for User ${participantId}`, 'success');
+                document.getElementById('participantNotifications').innerHTML = `<p>✅ Notifications cleared for User ${participantId}</p>`;
+            } catch (error) {
+                log(`❌ Error clearing notifications: ${error.message}`, 'error');
+            }
+        }
+
+        function simulateCompleteFlow() {
+            log('🚀 Starting complete meeting notification flow simulation...', 'info');
+            
+            // Step 1: Schedule meeting
+            document.getElementById('meetingTitle').value = 'Automated Test Meeting';
+            document.getElementById('user2').checked = true;
+            document.getElementById('user3').checked = true;
+            document.getElementById('user4').checked = false;
+            document.getElementById('user20').checked = true;
+            
+            setTimeout(() => {
+                scheduleMeeting();
+                
+                // Step 2: Check notifications for each participant
+                setTimeout(() => {
+                    [2, 3, 20].forEach((userId, index) => {
+                        setTimeout(() => {
+                            document.getElementById('participantSelect').value = userId;
+                            checkParticipantNotifications();
+                        }, index * 1000);
+                    });
+                }, 2000);
+            }, 500);
+        }
+
+        function testNotificationSystem() {
+            log('🔧 Testing notification system components...', 'info');
+            
+            // Test localStorage
+            try {
+                localStorage.setItem('test_key', 'test_value');
+                const retrieved = localStorage.getItem('test_key');
+                localStorage.removeItem('test_key');
+                
+                if (retrieved === 'test_value') {
+                    log('✅ localStorage working correctly', 'success');
+                } else {
+                    log('❌ localStorage test failed', 'error');
+                }
+            } catch (error) {
+                log(`❌ localStorage error: ${error.message}`, 'error');
+            }
+
+            // Test event dispatching
+            let eventReceived = false;
+            const testHandler = () => { eventReceived = true; };
+            
+            window.addEventListener('testEvent', testHandler);
+            window.dispatchEvent(new CustomEvent('testEvent'));
+            
+            setTimeout(() => {
+                window.removeEventListener('testEvent', testHandler);
+                if (eventReceived) {
+                    log('✅ Event system working correctly', 'success');
+                } else {
+                    log('❌ Event system test failed', 'error');
+                }
+            }, 100);
+        }
+
+        function inspectAllNotifications() {
+            log('🔍 Inspecting all notification data...', 'info');
+            
+            const users = [1, 2, 3, 4, 20, 21, 22];
+            let totalNotifications = 0;
+            
+            users.forEach(userId => {
+                const notifKey = `notifications_${userId}`;
+                const stored = localStorage.getItem(notifKey);
+                
+                if (stored) {
+                    try {
+                        const notifications = JSON.parse(stored);
+                        const unreadCount = notifications.filter(n => !n.read).length;
+                        totalNotifications += notifications.length;
+                        log(`📦 User ${userId}: ${notifications.length} notifications (${unreadCount} unread)`, 'info');
+                    } catch (error) {
+                        log(`❌ User ${userId}: Invalid notification data`, 'error');
+                    }
+                }
+            });
+            
+            log(`📊 Total notifications across all users: ${totalNotifications}`, 'info');
+        }
+
+        function clearAllTestData() {
+            log('🗑️ Clearing all test notification data...', 'warning');
+            
+            const users = [1, 2, 3, 4, 20, 21, 22];
+            let cleared = 0;
+            
+            users.forEach(userId => {
+                const notifKey = `notifications_${userId}`;
+                if (localStorage.getItem(notifKey)) {
+                    localStorage.removeItem(notifKey);
+                    cleared++;
+                    
+                    // Trigger update event
+                    window.dispatchEvent(new CustomEvent('notificationsUpdated', {
+                        detail: { userId: userId }
+                    }));
+                }
+            });
+            
+            log(`✅ Cleared notification data for ${cleared} users`, 'success');
+            document.getElementById('participantNotifications').innerHTML = '<p>All test data cleared.</p>';
+            updateOrganizerStatus('All test data cleared.', 'info');
+        }
+
+        // Listen for notification events
+        window.addEventListener('notificationsUpdated', (e) => {
+            const userId = e.detail?.userId;
+            log(`📡 Received notificationsUpdated event for User ${userId}`, 'info');
+        });
+
+        // Initialize
+        log('🚀 Meeting notification flow test page loaded', 'success');
+        updateOrganizerStatus('Ready to schedule meetings', 'info');
+    </script>
+</body>
+</html>

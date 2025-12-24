@@ -60,4 +60,59 @@ public class EmailService {
             throw new RuntimeException("Failed to send welcome email due to SMTP error.", e);
         }
     }
+
+    public void sendMeetingInvitation(Map<String, Object> payload) {
+        // --- Retrieve Meeting Data ---
+        String recipientEmail = (String) payload.get("recipientEmail");
+        String meetingTitle = (String) payload.getOrDefault("meetingTitle", "Meeting");
+        String meetingDate = (String) payload.getOrDefault("meetingDate", "");
+        String meetingTime = (String) payload.getOrDefault("meetingTime", "");
+        String meetingEndTime = (String) payload.getOrDefault("meetingEndTime", "");
+        String meetingLink = (String) payload.getOrDefault("meetingLink", "");
+        String organizer = (String) payload.getOrDefault("organizer", "");
+        String description = (String) payload.getOrDefault("description", "");
+        
+        if (recipientEmail == null || recipientEmail.isEmpty()) {
+            System.err.println("❌ ERROR: Recipient email is NULL/Empty. Cannot send meeting invitation.");
+            throw new RuntimeException("Failed to send email: Recipient email missing from payload.");
+        }
+        
+        // --- EMAIL MESSAGE SETUP ---
+        SimpleMailMessage message = new SimpleMailMessage();
+        
+        message.setFrom(senderEmail);
+        message.setTo(recipientEmail);
+        message.setSubject("Meeting Invitation: " + meetingTitle);
+        
+        String emailBody = "You have been invited to a meeting!\n\n" +
+            "Meeting Title: " + meetingTitle + "\n" +
+            "Date: " + meetingDate + "\n" +
+            "Time: " + meetingTime + (meetingEndTime != null && !meetingEndTime.isEmpty() ? " - " + meetingEndTime : "") + "\n" +
+            "Organizer: " + organizer + "\n";
+        
+        if (description != null && !description.isEmpty()) {
+            emailBody += "Description: " + description + "\n";
+        }
+        
+        emailBody += "\nJoin the meeting: " + meetingLink + "\n\n" +
+            "Please click the link above to join the video meeting.\n\n" +
+            "Thank You,\nThe InteractHub Team";
+        
+        message.setText(emailBody);
+        
+        // --- REAL EMAIL EXECUTION ---
+        try {
+            mailSender.send(message);
+            System.out.println("=======================================================");
+            System.out.println("✅ MEETING INVITATION EMAIL SENT TO: " + recipientEmail);
+            System.out.println("   Meeting: " + meetingTitle);
+            System.out.println("   Date: " + meetingDate + " at " + meetingTime);
+            System.out.println("   Link: " + meetingLink);
+            System.out.println("=======================================================");
+        } catch (Exception e) {
+            System.err.println("❌ FATAL EMAIL ERROR: Failed to send meeting invitation. Error: " + e.getMessage());
+            e.printStackTrace();
+            throw new RuntimeException("Failed to send meeting invitation due to SMTP error.", e);
+        }
+    }
 }

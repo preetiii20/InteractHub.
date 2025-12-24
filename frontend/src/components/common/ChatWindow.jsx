@@ -14,6 +14,8 @@ import QuotedMessage from './QuotedMessage';
 import LinkPreview from './LinkPreview';
 import MentionInput from './MentionInput';
 import SharedMediaGallery from './SharedMediaGallery';
+import ChatMeetingScheduler from './ChatMeetingScheduler';
+import unreadMessageService from '../../services/UnreadMessageService';
 import { 
   formatMessageTime, 
   formatMessageDate,
@@ -83,6 +85,10 @@ const ChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage, groupMe
                         if (onNewMessage && newMsg.senderName !== normalizedSelfIdentifier) {
                             onNewMessage(newMsg);
                         }
+                        // Track unread message
+                        if (newMsg.senderName !== normalizedSelfIdentifier) {
+                            unreadMessageService.incrementUnread(normalizedChannelId, newMsg, normalizedSelfIdentifier);
+                        }
                     } catch {}
                 }, { id: `dm-${dmRoom}` });
                 
@@ -142,6 +148,10 @@ const ChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage, groupMe
                         // Trigger callback if message is from someone else
                         if (onNewMessage && newMsg.senderName !== normalizedSelfIdentifier && newMsg.senderName !== selfName) {
                             onNewMessage(newMsg);
+                        }
+                        // Track unread message
+                        if (newMsg.senderName !== normalizedSelfIdentifier && newMsg.senderName !== selfName) {
+                            unreadMessageService.incrementUnread(normalizedChannelId, newMsg, normalizedSelfIdentifier);
                         }
                     } catch (error) {
                         console.error('❌ Error parsing group message:', error);
@@ -842,6 +852,74 @@ const ChatWindow = ({ channelId, selfName, selfIdentifier, onNewMessage, groupMe
                     >
                         {uploading ? '⏳' : '📎'}
                     </button>
+                    <ChatMeetingScheduler
+                        recipientName={isDm ? dmRoom.split('|').find(u => u !== normalizedSelfIdentifier) : ''}
+                        recipientId={isDm ? dmRoom.split('|').find(u => u !== normalizedSelfIdentifier) : null}
+                        isDm={isDm}
+                        groupMembers={isGroup ? groupMembers : []}
+                        onMeetingScheduled={(data) => {
+                            console.log('✅ Meeting scheduled from chat:', data);
+                            
+                            // Send meeting details to chat
+                            if (data && data.message) {
+                              const meetingMessage = `📅 Meeting Scheduled: ${data.message.title}
+📆 Date: ${data.message.date}
+🕐 Time: ${data.message.time} - ${data.message.endTime}
+${data.message.description ? `📝 Details: ${data.message.description}` : ''}
+🔗 Join: ${data.message.jitsiLink}`;
+                              
+                              // Set the message in the input field
+                              setText(meetingMessage);
+                              console.log('📤 Meeting message prepared for chat');
+                              
+                              // Auto-send the message after a short delay to ensure proper formatting
+                              setTimeout(() => {
+                                try {
+                                  // Check if WebSocket is connected
+                                  if (!stompRef.current || !isConnected) {
+                                    console.log('⚠️ WebSocket not ready, user will need to send manually');
+                                    return;
+                                  }
+
+                                  if (!stompRef.current.connected) {
+                                    console.log('⚠️ STOMP client not connected, user will need to send manually');
+                                    return;
+                                  }
+
+                                  // Send the message
+                                  if (isDm && dmRoom) {
+                                    const [userA, userB] = dmRoom.split('|');
+                                    const recipientLower = normalizedSelfIdentifier === userA ? userB : userA;
+                                    
+                                    const payload = { 
+                                      roomId: dmRoom, 
+                                      senderName: normalizedSelfIdentifier,
+                                      recipientName: recipientLower,
+                                      content: meetingMessage
+                                    };
+                                    
+                                    console.log('📤 Auto-sending meeting message:', payload);
+                                    stompRef.current.publish({ destination: '/app/dm.send', body: JSON.stringify(payload) });
+                                    setText('');
+                                  } else if (isGroup && groupId) {
+                                    const payload = { 
+                                      groupId, 
+                                      senderName: normalizedSelfIdentifier,
+                                      content: meetingMessage
+                                    };
+                                    
+                                    console.log('📤 Auto-sending meeting message to group:', payload);
+                                    stompRef.current.publish({ destination: '/app/group.send', body: JSON.stringify(payload) });
+                                    setText('');
+                                  }
+                                } catch (error) {
+                                  console.error('⚠️ Error auto-sending meeting message:', error);
+                                  console.log('User can manually send the message');
+                                }
+                              }, 500);
+                            }
+                        }}
+                    />
                     <div className="flex-1 relative overflow-visible z-50">
                         <MentionInput
                             value={text}

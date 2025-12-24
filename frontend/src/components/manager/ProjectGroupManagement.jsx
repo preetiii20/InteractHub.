@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 import apiConfig from '../../config/api';
 import { authHelpers } from '../../config/auth';
 import ChatWindow from '../common/ChatWindow';
 
 const ProjectGroupManagement = () => {
+  const navigate = useNavigate();
   const [projectGroups, setProjectGroups] = useState([]);
   const [projects, setProjects] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -311,6 +313,15 @@ const ProjectGroupManagement = () => {
                 )}
               </div>
               <div className="flex space-x-2">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    // Kanban feature removed
+                  }}
+                  className="hidden"
+                >
+                  📋 View Kanban
+                </button>
                 <button
                   onClick={async () => {
                     try {

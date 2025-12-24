@@ -14,7 +14,7 @@ const AnnouncementList = ({ items, onLike, onComment, onDelete, drafts, setDraft
   const [showAllComments, setShowAllComments] = useState({});
   const [showLikes, setShowLikes] = useState({});
   const [likedUsers, setLikedUsers] = useState({});
-  const [activeTab, setActiveTab] = useState('sent');
+  const [activeTab, setActiveTab] = useState('all');
 
   const fetchLikedUsers = async (announcementId) => {
     try {
@@ -91,11 +91,11 @@ const AnnouncementList = ({ items, onLike, onComment, onDelete, drafts, setDraft
   const currentUser = authHelpers.getUserName() || 'User';
   const sentAnnouncements = Array.isArray(items) ? items.filter(ann => {
     const name = (ann.createdByName && String(ann.createdByName).trim()) || 'User';
-    return name === currentUser;
+    return name.toLowerCase() === currentUser.toLowerCase();
   }) : [];
   const receivedAnnouncements = Array.isArray(items) ? items.filter(ann => {
     const name = (ann.createdByName && String(ann.createdByName).trim()) || 'User';
-    return name !== currentUser;
+    return name.toLowerCase() !== currentUser.toLowerCase();
   }) : [];
 
   const renderAnnouncementCard = (ann) => {
@@ -226,6 +226,16 @@ const AnnouncementList = ({ items, onLike, onComment, onDelete, drafts, setDraft
       {/* Tab Navigation */}
       <div className="flex gap-2 border-b border-gray-300">
         <button
+          onClick={() => setActiveTab('all')}
+          className={`px-6 py-3 font-semibold transition-all ${
+            activeTab === 'all'
+              ? `text-${colors.primary}-600 border-b-2 border-${colors.primary}-600 bg-${colors.primary}-50`
+              : 'text-gray-600 hover:text-gray-800'
+          }`}
+        >
+          📢 All Announcements ({items.length})
+        </button>
+        <button
           onClick={() => setActiveTab('sent')}
           className={`px-6 py-3 font-semibold transition-all ${
             activeTab === 'sent'
@@ -246,6 +256,19 @@ const AnnouncementList = ({ items, onLike, onComment, onDelete, drafts, setDraft
           📥 Received ({receivedAnnouncements.length})
         </button>
       </div>
+
+      {/* All Announcements Tab */}
+      {activeTab === 'all' && (
+        <div className={`bg-gradient-to-r ${colors.bg} p-6 rounded-xl border ${colors.border}`}>
+          {items.length > 0 ? (
+            <div className="space-y-4">
+              {items.map(ann => renderAnnouncementCard(ann))}
+            </div>
+          ) : (
+            <p className="text-gray-500 text-center py-8">No announcements found.</p>
+          )}
+        </div>
+      )}
 
       {/* Sent by Me Tab Content */}
       {activeTab === 'sent' && (
@@ -271,11 +294,6 @@ const AnnouncementList = ({ items, onLike, onComment, onDelete, drafts, setDraft
             <p className="text-gray-500 text-center py-8">No announcements received.</p>
           )}
         </div>
-      )}
-
-      {/* No Announcements at All */}
-      {sentAnnouncements.length === 0 && receivedAnnouncements.length === 0 && (
-        <p className="text-gray-500 text-center py-8">No announcements found.</p>
       )}
     </div>
   );

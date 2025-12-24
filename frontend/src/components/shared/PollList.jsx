@@ -15,7 +15,7 @@ const PollList = ({ items, resultsMap, onVote, onDelete, choice, setChoice, user
   const safeSetChoice = typeof setChoice === 'function' ? setChoice : null;
   const [expanded, setExpanded] = useState({});
   const [votersMap, setVotersMap] = useState({});
-  const [activeTab, setActiveTab] = useState('sent');
+  const [activeTab, setActiveTab] = useState('all');
   const currentUser = authHelpers.getUserName() || 'User';
 
   const toggleVotes = async (pollId) => {
@@ -130,6 +130,16 @@ const PollList = ({ items, resultsMap, onVote, onDelete, choice, setChoice, user
       {/* Tab Navigation */}
       <div className="flex gap-2 border-b border-gray-300">
         <button
+          onClick={() => setActiveTab('all')}
+          className={`px-6 py-3 font-semibold transition-all ${
+            activeTab === 'all'
+              ? `text-${colors.primary}-600 border-b-2 border-${colors.primary}-600 bg-${colors.primary}-50`
+              : 'text-gray-600 hover:text-gray-800'
+          }`}
+        >
+          📊 All Polls ({items.length})
+        </button>
+        <button
           onClick={() => setActiveTab('sent')}
           className={`px-6 py-3 font-semibold transition-all ${
             activeTab === 'sent'
@@ -150,6 +160,19 @@ const PollList = ({ items, resultsMap, onVote, onDelete, choice, setChoice, user
           📥 Received ({receivedPolls.length})
         </button>
       </div>
+
+      {/* All Polls Tab */}
+      {activeTab === 'all' && (
+        <div className={`bg-gradient-to-r ${colors.bg} p-6 rounded-xl border ${colors.border}`}>
+          {items.length > 0 ? (
+            <div className="space-y-4">
+              {items.map(poll => renderPollCard(poll))}
+            </div>
+          ) : (
+            <p className="text-gray-500 text-center py-8">No active polls found.</p>
+          )}
+        </div>
+      )}
 
       {/* Sent by Me Tab Content */}
       {activeTab === 'sent' && (
@@ -175,11 +198,6 @@ const PollList = ({ items, resultsMap, onVote, onDelete, choice, setChoice, user
             <p className="text-gray-500 text-center py-8">No polls received.</p>
           )}
         </div>
-      )}
-
-      {/* No Polls at All */}
-      {sentPolls.length === 0 && receivedPolls.length === 0 && (
-        <p className="text-gray-500 text-center py-8">No active polls found.</p>
       )}
     </div>
   );

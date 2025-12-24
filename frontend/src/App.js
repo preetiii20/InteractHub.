@@ -2,12 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import ToastProvider from './components/common/ToastProvider';
-import AnnouncementPollNotificationHub from './components/common/AnnouncementPollNotificationHub';
-import GlobalNotificationDisplay from './components/common/GlobalNotificationDisplay';
 import GlobalNotificationCenter from './components/common/GlobalNotificationCenter';
 import { NotificationProvider } from './context/NotificationContext';
 import persistentWebSocketService from './services/PersistentWebSocketService';
 import { authHelpers } from './config/auth';
+import notificationFlowDebug from './utils/notificationFlowDebug';
 
 // Import Pages
 import LandingPage from './pages/LandingPage';
@@ -21,6 +20,7 @@ import ChangePasswordPage from './pages/ChangePasswordPage';
 import AdminLayout from './components/admin/AdminLayout';
 import AdminPage from './pages/AdminPage';
 import AdminDashboard from './components/admin/AdminDashboard';
+import AdminDashboardWithCalendar from './components/admin/AdminDashboardWithCalendar';
 import EnhancedAdminDashboard from './components/admin/EnhancedAdminDashboard';
 import ComprehensiveAdminDashboard from './components/admin/ComprehensiveAdminDashboard';
 import UserManagement from './components/admin/UserManagement';
@@ -39,7 +39,7 @@ import EmployeeManagement from './components/manager/EmployeeManagement';
 import ProjectGroupManagement from './components/manager/ProjectGroupManagement';
 import ProjectManagement from './components/manager/ProjectManagement';
 import TaskManagement from './components/manager/TaskManagement';
-import LiveCommunicationHub from './components/live/EnhancedLiveCommunicationHub';
+import EnhancedLiveCommunicationHub from './components/live/EnhancedLiveCommunicationHub';
 
 // Import Employee Layout & Components
 import EmployeeLayout from './components/employee/EmployeeLayout';
@@ -66,9 +66,6 @@ const DepartmentSettings = () => (
 
 
 const App = () => {
-  const [announcementData, setAnnouncementData] = useState(null);
-  const [pollData, setPollData] = useState(null);
-
   // Initialize persistent WebSocket on app load
   useEffect(() => {
     const initializeWebSocket = async () => {
@@ -93,27 +90,10 @@ const App = () => {
     initializeWebSocket();
   }, []);
 
-  const handleAnnouncementReceived = (announcement) => {
-    setAnnouncementData(announcement);
-    // You can navigate to announcements page or scroll to it
-    console.log('Announcement received:', announcement);
-  };
-
-  const handlePollReceived = (poll) => {
-    setPollData(poll);
-    // You can navigate to polls page or scroll to it
-    console.log('Poll received:', poll);
-  };
-
   return (
     <NotificationProvider>
       <ToastProvider>
-        <GlobalNotificationDisplay />
         <GlobalNotificationCenter />
-        <AnnouncementPollNotificationHub 
-          onAnnouncementReceived={handleAnnouncementReceived}
-          onPollReceived={handlePollReceived}
-        />
         <Router>
       <Routes>
         {/* Landing Page */}
@@ -128,15 +108,15 @@ const App = () => {
         
         {/* Admin Protected Routes: Uses Outlet to display nested components */}
         <Route path="/dashboard/admin" element={<AdminLayout />}>
-            {/* The index route for /dashboard/admin */}
-            <Route index element={<ComprehensiveAdminDashboard />} />
+            {/* The index route for /dashboard/admin - Original dashboard with calendar below */}
+            <Route index element={<AdminDashboardWithCalendar />} />
             <Route path="enhanced" element={<EnhancedAdminDashboard />} />
             <Route path="old-dashboard" element={<AdminDashboard />} /> 
             
             {/* Nested Admin Features */}
             <Route path="users" element={<UserManagement />} /> 
             <Route path="comms" element={<GlobalCommunications />} /> 
-            <Route path="live" element={<LiveCommunicationHub />} />
+            <Route path="live" element={<EnhancedLiveCommunicationHub />} />
 
             <Route path="accounts" element={<AdminAccountCreation />} />
             <Route path="monitoring" element={<AdminMonitoringDashboard />} />
@@ -153,7 +133,7 @@ const App = () => {
             <Route path="tasks" element={<TaskManagement />} />
             <Route path="employees" element={<EmployeeManagement />} />
             <Route path="groups" element={<ProjectGroupManagement />} />
-            <Route path="communication" element={<LiveCommunicationHub />} />
+            <Route path="communication" element={<EnhancedLiveCommunicationHub />} />
             <Route path="comms" element={<ManagerComms />} /> 
             <Route path="communications" element={<ManagerComms />} /> 
             <Route path="chat" element={<ChatWindow />} />
@@ -163,7 +143,7 @@ const App = () => {
         <Route path="/dashboard/employee" element={<EmployeeLayout />}>
             <Route index element={<EmployeeDashboard />} />
             <Route path="global-comms" element={<EmployeeGlobalComms />} />
-            <Route path="chat" element={<LiveCommunicationHub />} />
+            <Route path="chat" element={<EnhancedLiveCommunicationHub />} />
             <Route path="projects" element={<EmployeeProjects />} />
             <Route path="attendance" element={<EmployeeAttendance />} />
             <Route path="leave-requests" element={<EmployeeLeaveRequest />} />
@@ -175,7 +155,7 @@ const App = () => {
         <Route path="/dashboard/hr" element={<HRLayout />}>
             <Route index element={<HRDashboard />} />
             <Route path="employees" element={<HREmployeeManagement />} />
-            <Route path="communication" element={<LiveCommunicationHub />} />
+            <Route path="communication" element={<EnhancedLiveCommunicationHub />} />
             <Route path="global-comms" element={<HRGlobalComms />} />
             <Route path="attendance" element={<HRAttendance />} />
             <Route path="leave-requests" element={<HRLeaveRequests />} />

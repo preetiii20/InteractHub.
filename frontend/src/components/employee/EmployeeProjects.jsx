@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 import apiConfig from '../../config/api';
 import { authHelpers } from '../../config/auth';
 import ChatWindow from '../common/ChatWindow';
 
 const EmployeeProjects = () => {
+    const navigate = useNavigate();
     const [projectGroups, setProjectGroups] = useState([]);
     const [projects, setProjects] = useState({});
     const [loading, setLoading] = useState(true);
@@ -272,7 +274,16 @@ const EmployeeProjects = () => {
                                         {group.employeeIds?.length || 0} member(s)
                                     </span>
                                 </div>
-                                <div className="mt-2">
+                                <div className="mt-2 space-y-2">
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            // Kanban feature removed
+                                        }}
+                                        className="hidden"
+                                    >
+                                        📋 View Kanban
+                                    </button>
                                     <button
                                         onClick={async (e) => {
                                             e.stopPropagation();

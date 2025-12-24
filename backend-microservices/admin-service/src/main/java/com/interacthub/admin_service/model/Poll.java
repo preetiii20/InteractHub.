@@ -39,6 +39,9 @@ public class Poll {
     @Column(name="is_active") private Boolean isActive = true;
 
     @Column(name="created_at") private LocalDateTime createdAt;
+    
+    @Column(name = "organization_id")
+    private Long organizationId;
 
     @PrePersist protected void onCreate() { this.createdAt = LocalDateTime.now(); }
 
@@ -51,4 +54,5 @@ public class Poll {
     public String getCreatedByName() { return createdByName; } public void setCreatedByName(String createdByName) { this.createdByName = createdByName; }
     public Boolean getIsActive() { return isActive; } public void setIsActive(Boolean isActive) { this.isActive = isActive; }
     public LocalDateTime getCreatedAt() { return createdAt; } public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+    public Long getOrganizationId() { return organizationId; } public void setOrganizationId(Long organizationId) { this.organizationId = organizationId; }
 }

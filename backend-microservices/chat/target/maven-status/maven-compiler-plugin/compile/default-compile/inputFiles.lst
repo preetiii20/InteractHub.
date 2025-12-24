@@ -4,6 +4,7 @@ C:\Users\HP\Desktop\Interacthub-1\backend-microservices\chat\src\main\java\com\i
 C:\Users\HP\Desktop\Interacthub-1\backend-microservices\chat\src\main\java\com\interacthub\chat\repository\DirectMessageRepository.java
 C:\Users\HP\Desktop\Interacthub-1\backend-microservices\chat\src\main\java\com\interacthub\chat\model\TypingEvent.java
 C:\Users\HP\Desktop\Interacthub-1\backend-microservices\chat\src\main\java\com\interacthub\chat\repository\UserPresenceRepository.java
+C:\Users\HP\Desktop\Interacthub-1\backend-microservices\chat\src\main\java\com\interacthub\chat\service\UserService.java
 C:\Users\HP\Desktop\Interacthub-1\backend-microservices\chat\src\main\java\com\interacthub\chat\model\Interaction.java
 C:\Users\HP\Desktop\Interacthub-1\backend-microservices\chat\src\main\java\com\interacthub\chat\controller\CallController.java
 C:\Users\HP\Desktop\Interacthub-1\backend-microservices\chat\src\main\java\com\interacthub\chat\model\ChatMessage.java

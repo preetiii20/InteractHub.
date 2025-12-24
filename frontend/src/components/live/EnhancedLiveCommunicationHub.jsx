@@ -5,7 +5,7 @@ import ChatWindow from '../common/ChatWindow';
 import GroupInfoModal from '../common/GroupInfoModal';
 import IncomingCallModal from '../common/IncomingCallModal';
 import ConnectionStatus from '../common/ConnectionStatus';
-import NotificationService from '../../services/NotificationService';
+import unreadMessageService from '../../services/UnreadMessageService';
 import { Avatar } from '../../utils/avatarGenerator';
 import { getRelativeTime } from '../../utils/timeFormatter';
 import apiConfig from '../../config/api';
@@ -93,17 +93,34 @@ const EnhancedLiveCommunicationHub = () => {
     useEffect(() => {
         const load = async () => {
             try {
-                const res = await fetch(apiConfig.chatService + '/users/all' || 'http://localhost:8085/api/chat/users/all');
+                console.log('📂 Loading conversations for user:', selfIdentifier);
+                const url = apiConfig.chatService + '/users/all';
+                console.log('📡 Fetching from:', url);
+                
+                const res = await fetch(url);
+                console.log('📡 Response status:', res.status);
+                
+                if (!res.ok) {
+                    const errorText = await res.text();
+                    console.error('❌ Error response:', res.status, errorText);
+                    throw new Error(`HTTP ${res.status}: ${errorText}`);
+                }
+                
                 const users = await res.json();
+                console.log('📡 Received users:', users);
                 
                 const identifiers = [];
                 const names = {};
                 const convs = new Map();
                 
                 if (Array.isArray(users)) {
+                    console.log('✅ Users is array, processing', users.length, 'users');
                     users.forEach(u => {
                         const email = (u.email || '').trim();
-                        if (!email || email === selfIdentifier) return;
+                        if (!email || email === selfIdentifier) {
+                            console.log('   ⏭️ Skipping user:', email, '(self or empty)');
+                            return;
+                        }
                         const fullName = u.firstName ? `${u.firstName} ${u.lastName || ''}`.trim() : (u.name || u.username || '');
                         identifiers.push(email);
                         names[email] = fullName || email;
@@ -119,7 +136,10 @@ const EnhancedLiveCommunicationHub = () => {
                             lastMessageTime: null,
                             isOnline: false
                         });
+                        console.log('   ✅ Created DM conversation:', channelId, 'with', email);
                     });
+                } else {
+                    console.warn('⚠️ Users is not an array:', typeof users);
                 }
 
                 if (selfIdentifier && !identifiers.includes(selfIdentifier)) {
@@ -127,31 +147,105 @@ const EnhancedLiveCommunicationHub = () => {
                     names[selfIdentifier] = userName || selfIdentifier;
                 }
                 
-                // Load groups from localStorage
+                console.log('✅ Loaded', identifiers.length, 'users for DM conversations');
+                console.log('✅ Created', convs.size, 'DM conversations');
+                
+                // Load groups from backend
                 try {
-                    const storedGroups = localStorage.getItem('chat_groups');
-                    if (storedGroups) {
-                        const groups = JSON.parse(storedGroups);
-                        Object.entries(groups).forEach(([groupId, groupData]) => {
-                            convs.set(groupId, {
-                                id: groupId,
-                                name: groupData.name,
-                                type: 'group',
-                                participants: groupData.members,
-                                createdBy: groupData.createdBy,
-                                lastMessage: '',
-                                lastMessageTime: groupData.createdAt ? new Date(groupData.createdAt) : null,
-                                isOnline: false
-                            });
+                    console.log('📡 Fetching groups from backend for user:', selfIdentifier);
+                    const groupRes = await fetch(`http://localhost:8085/api/group/user/${encodeURIComponent(selfIdentifier)}/groups`, { credentials: 'include' });
+                    if (groupRes.ok) {
+                        const backendGroups = await groupRes.json();
+                        console.log('✅ Fetched', backendGroups.length, 'groups from backend:', backendGroups);
+                        
+                        backendGroups.forEach(group => {
+                            if (group.groupId) {
+                                convs.set(group.groupId, {
+                                    id: group.groupId,
+                                    name: group.name,
+                                    type: 'group',
+                                    participants: group.members || [],
+                                    createdBy: group.createdBy,
+                                    lastMessage: '',
+                                    lastMessageTime: group.createdAt ? new Date(group.createdAt) : null,
+                                    isOnline: false
+                                });
+                                console.log('   ✅ Added group:', group.name, '(', group.groupId, ')');
+                            }
                         });
+                        
+                        // Also save to localStorage for offline access
+                        try {
+                            const storedGroups = {};
+                            backendGroups.forEach(group => {
+                                storedGroups[group.groupId] = {
+                                    name: group.name,
+                                    members: group.members || [],
+                                    createdAt: group.createdAt,
+                                    createdBy: group.createdBy
+                                };
+                            });
+                            localStorage.setItem('chat_groups', JSON.stringify(storedGroups));
+                            console.log('💾 Saved groups to localStorage');
+                        } catch (e) {
+                            console.error('Error saving groups to localStorage:', e);
+                        }
+                    } else {
+                        console.warn('⚠️ Failed to fetch groups from backend:', groupRes.status);
+                        // Fallback to localStorage
+                        try {
+                            const storedGroups = localStorage.getItem('chat_groups');
+                            if (storedGroups) {
+                                const groups = JSON.parse(storedGroups);
+                                Object.entries(groups).forEach(([groupId, groupData]) => {
+                                    convs.set(groupId, {
+                                        id: groupId,
+                                        name: groupData.name,
+                                        type: 'group',
+                                        participants: groupData.members,
+                                        createdBy: groupData.createdBy,
+                                        lastMessage: '',
+                                        lastMessageTime: groupData.createdAt ? new Date(groupData.createdAt) : null,
+                                        isOnline: false
+                                    });
+                                });
+                                console.log('✅ Loaded groups from localStorage (fallback)');
+                            }
+                        } catch (e) {
+                            console.error('Error loading groups from localStorage:', e);
+                        }
                     }
                 } catch (e) {
-                    console.error('Error loading groups from localStorage:', e);
+                    console.error('❌ Error fetching groups from backend:', e);
+                    // Fallback to localStorage
+                    try {
+                        const storedGroups = localStorage.getItem('chat_groups');
+                        if (storedGroups) {
+                            const groups = JSON.parse(storedGroups);
+                            Object.entries(groups).forEach(([groupId, groupData]) => {
+                                convs.set(groupId, {
+                                    id: groupId,
+                                    name: groupData.name,
+                                    type: 'group',
+                                    participants: groupData.members,
+                                    createdBy: groupData.createdBy,
+                                    lastMessage: '',
+                                    lastMessageTime: groupData.createdAt ? new Date(groupData.createdAt) : null,
+                                    isOnline: false
+                                });
+                            });
+                            console.log('✅ Loaded groups from localStorage (error fallback)');
+                        }
+                    } catch (e2) {
+                        console.error('Error loading groups from localStorage:', e2);
+                    }
                 }
                 
                 setNameMap(names);
                 setDirectory(identifiers.sort());
+                console.log('📝 Setting conversations state with', convs.size, 'conversations');
                 setConversations(convs);
+                console.log('✅ Conversations initialized:', convs.size, 'total conversations');
                 
                 // Load last message for each conversation
                 const loadLastMessages = async () => {
@@ -172,6 +266,7 @@ const EnhancedLiveCommunicationHub = () => {
                                             lastMessage: lastMsg.content || '',
                                             lastMessageTime: new Date(lastMsg.sentAt || Date.now())
                                         });
+                                        console.log('   ✅ Loaded last message for DM:', channelId);
                                     }
                                 } catch (e) {
                                     console.error(`Error loading last message for ${channelId}:`, e);
@@ -193,6 +288,7 @@ const EnhancedLiveCommunicationHub = () => {
                                             lastMessage: lastMsg.content || '',
                                             lastMessageTime: new Date(lastMsg.sentAt || Date.now())
                                         });
+                                        console.log('   ✅ Loaded last message for group:', groupId);
                                     }
                                 } catch (e) {
                                     console.error(`Error loading last message for group ${groupId}:`, e);
@@ -235,6 +331,8 @@ const EnhancedLiveCommunicationHub = () => {
             newCounts.set(conversationId, 0);
             return newCounts;
         });
+        // Clear unread from service
+        unreadMessageService.clearUnread(conversationId);
     }, [clearChannelIdParam]);
 
     // Read channelId from URL and set active conversation (only once)
@@ -410,13 +508,16 @@ const EnhancedLiveCommunicationHub = () => {
                 return newCounts;
             });
             
+            // Track unread message in service
+            unreadMessageService.incrementUnread(channelId, message, selfIdentifier);
+            
             // Show notifications
             const from = message.senderName || message.fromUser || 'Someone';
             const displayName = nameMap[from] || from;
             showBrowserNotification(displayName, message.content || 'New message', channelId);
             showToastNotification('message', from, message.content || 'New message', channelId);
         }
-    }, [activeConversationId, nameMap, showBrowserNotification, showToastNotification]);
+    }, [activeConversationId, nameMap, showBrowserNotification, showToastNotification, selfIdentifier]);
 
     // Create group
     const handleCreateGroup = useCallback(async (groupName, members) => {
@@ -542,18 +643,33 @@ const EnhancedLiveCommunicationHub = () => {
                 
                 // Subscribe to messages
                 const unsubscribe = persistentWebSocketService.subscribe('EnhancedLiveCommunicationHub', (payload) => {
+                    console.log('📨 Persistent WebSocket message received:', payload);
                     handleWebSocketMessage(payload);
                     
-                    // Track unread for chat messages
-                    if (payload.content && payload.channelId && payload.senderName !== selfIdentifier) {
-                        const channelId = payload.channelId;
-                        if (channelId !== activeConversationId) {
+                    // Track unread for chat messages (both DM and group)
+                    if (payload.content && payload.senderName !== selfIdentifier) {
+                        let channelId = payload.channelId;
+                        
+                        // If no channelId, try to determine from payload
+                        if (!channelId) {
+                            if (payload.groupId) {
+                                channelId = payload.groupId;
+                            } else if (payload.roomId) {
+                                channelId = payload.roomId;
+                            }
+                        }
+                        
+                        if (channelId && channelId !== activeConversationId) {
+                            console.log('📬 Tracking unread for channel:', channelId);
                             setUnreadCounts(prev => {
                                 const newCounts = new Map(prev);
                                 const currentCount = newCounts.get(channelId) || 0;
                                 newCounts.set(channelId, currentCount + 1);
                                 return newCounts;
                             });
+                            
+                            // Track in UnreadMessageService
+                            unreadMessageService.incrementUnread(channelId, payload, selfIdentifier);
                         }
                     }
                 });
@@ -710,6 +826,7 @@ const EnhancedLiveCommunicationHub = () => {
                                             });
                                             
                                             // Trigger new message handler
+                                            console.log('📬 Calling handleNewMessage for group message:', { cleanGroupId, senderName: newMsg.senderName, content: newMsg.content?.substring(0, 50) });
                                             handleNewMessage({ ...newMsg, channelId: cleanGroupId, groupId: cleanGroupId });
                                         } catch (error) {
                                             console.error('❌ Error handling group message:', error);
@@ -1108,18 +1225,8 @@ const EnhancedLiveCommunicationHub = () => {
     }, [conversations, searchQuery, nameMap]);
 
     return (
-        <div className="h-screen flex flex-col bg-white">
-            <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 flex-shrink-0">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h1 className="text-xl font-bold mb-1">Live Communication Hub</h1>
-                        <p className="text-sm text-blue-100">Real-time collaboration and messaging</p>
-                    </div>
-                    <ConnectionStatus isConnected={isConnected} showLabel={true} />
-                </div>
-            </div>
-
-            <div className="flex-1 flex overflow-hidden">
+        <div className="h-full w-full flex flex-col bg-white m-0 p-0">
+            <div className="flex-1 flex overflow-hidden m-0 p-0 w-full">
                     {(activeTab === 'chat' || !activeTab) && (
                         <div className="flex w-full h-full">
                             {/* Sidebar */}

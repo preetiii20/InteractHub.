@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Notification Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        button { padding: 10px 20px; margin: 10px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        .result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+    </style>
+</head>
+<body>
+    <h1>Simple Notification Test</h1>
+    <p>This tests the basic localStorage notification system.</p>
+    
+    <button onclick="testBasicNotification()">Test Basic Notification</button>
+    <button onclick="checkNotifications()">Check Notifications</button>
+    <button onclick="clearNotifications()">Clear Notifications</button>
+    
+    <div id="results"></div>
+
+    <script>
+        function addResult(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `result ${type}`;
+            div.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong>: ${message}`;
+            document.getElementById('results').appendChild(div);
+        }
+
+        function testBasicNotification() {
+            const userId = 2;
+            
+            try {
+                // Create notification
+                const notification = {
+                    id: Date.now() + Math.random(),
+                    type: 'MEETING_INVITATION',
+                    title: 'Meeting Invitation: Basic Test',
+                    message: 'You\'ve been invited to "Basic Test" on 2025-12-22 at 14:00. Check your calendar for details.',
+                    timestamp: new Date().toISOString(),
+                    read: false,
+                    data: {
+                        meetingId: 999,
+                        meetingTitle: 'Basic Test',
+                        meetingDate: '2025-12-22',
+                        meetingTime: '14:00',
+                        jitsiLink: 'https://meet.jit.si/test'
+                    }
+                };
+                
+                // Store in localStorage
+                const notifKey = `notifications_${userId}`;
+                const existingNotifs = localStorage.getItem(notifKey);
+                const notifs = existingNotifs ? JSON.parse(existingNotifs) : [];
+                notifs.unshift(notification);
+                localStorage.setItem(notifKey, JSON.stringify(notifs));
+                
+                // Dispatch event
+                window.dispatchEvent(new CustomEvent('notificationsUpdated', {
+                    detail: { userId: userId }
+                }));
+                
+                addResult(`✅ Basic notification created for user ${userId}`, 'success');
+                addResult(`📬 Notification stored in localStorage key: ${notifKey}`, 'info');
+                addResult(`📡 Event dispatched: notificationsUpdated`, 'info');
+                
+            } catch (error) {
+                addResult(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        function checkNotifications() {
+            const userId = 2;
+            const notifKey = `notifications_${userId}`;
+            
+            try {
+                const stored = localStorage.getItem(notifKey);
+                if (stored) {
+                    const notifications = JSON.parse(stored);
+                    addResult(`📬 Found ${notifications.length} notifications for user ${userId}`, 'success');
+                    
+                    notifications.forEach((notif, index) => {
+                        addResult(`${index + 1}. ${notif.title} (${notif.type}) - ${notif.read ? 'Read' : 'Unread'}`, 'info');
+                    });
+                } else {
+                    addResult(`📭 No notifications found for user ${userId}`, 'info');
+                }
+            } catch (error) {
+                addResult(`❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        function clearNotifications() {
+            const userId = 2;
+            const notifKey = `notifications_${userId}`;
+            localStorage.removeItem(notifKey);
+            addResult(`🗑️ Cleared notifications for user ${userId}`, 'success');
+        }
+
+        // Show initial state
+        window.onload = function() {
+            addResult('🚀 Simple notification test loaded', 'info');
+            addResult('Click "Test Basic Notification" to create a test notification', 'info');
+        };
+    </script>
+</body>
+</html>

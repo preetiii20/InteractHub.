@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calendar Integration Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        button { padding: 10px 20px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 5px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Calendar Integration Test</h1>
+    <p>This page tests the calendar backend integration to ensure meetings are properly shared between users.</p>
+    
+    <div id="results"></div>
+    
+    <button onclick="testBackendConnection()">Test Backend Connection</button>
+    <button onclick="testUserMeetings()">Test User Meetings</button>
+    <button onclick="testCreateMeeting()">Test Create Meeting</button>
+    <button onclick="clearResults()">Clear Results</button>
+
+    <script>
+        const resultsDiv = document.getElementById('results');
+        
+        function addResult(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `test-result ${type}`;
+            div.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong>: ${message}`;
+            resultsDiv.appendChild(div);
+            resultsDiv.scrollTop = resultsDiv.scrollHeight;
+        }
+        
+        function clearResults() {
+            resultsDiv.innerHTML = '';
+        }
+        
+        async function testBackendConnection() {
+            addResult('Testing backend connection...', 'info');
+            try {
+                const response = await fetch('http://localhost:8081/api/admin/meetings');
+                if (response.ok) {
+                    const meetings = await response.json();
+                    addResult(`✅ Backend connected successfully! Found ${meetings.length} meetings.`, 'success');
+                    addResult(`<pre>${JSON.stringify(meetings, null, 2)}</pre>`, 'info');
+                } else {
+                    addResult(`❌ Backend connection failed with status: ${response.status}`, 'error');
+                }
+            } catch (error) {
+                addResult(`❌ Backend connection error: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testUserMeetings() {
+            const userId = prompt('Enter user ID to test (e.g., 2, 3, 20):');
+            if (!userId) return;
+            
+            addResult(`Testing meetings for user ${userId}...`, 'info');
+            try {
+                const response = await fetch(`http://localhost:8081/api/admin/meetings/user/${userId}`);
+                if (response.ok) {
+                    const meetings = await response.json();
+                    addResult(`✅ User ${userId} has ${meetings.length} meetings.`, 'success');
+                    if (meetings.length > 0) {
+                        addResult(`<pre>${JSON.stringify(meetings, null, 2)}</pre>`, 'info');
+                    }
+                } else {
+                    addResult(`❌ Failed to get meetings for user ${userId}: ${response.status}`, 'error');
+                }
+            } catch (error) {
+                addResult(`❌ Error getting user meetings: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testCreateMeeting() {
+            const title = prompt('Enter meeting title:') || 'Test Meeting';
+            const participantIds = prompt('Enter participant IDs (comma-separated, e.g., 2,3,20):');
+            
+            if (!participantIds) {
+                addResult('❌ No participants specified', 'error');
+                return;
+            }
+            
+            const participants = participantIds.split(',').map(id => parseInt(id.trim()));
+            
+            const meetingData = {
+                title: title,
+                description: 'Test meeting created from integration test',
+                meetingDate: '2025-12-22',
+                meetingTime: '14:00',
+                meetingEndTime: '15:00',
+                jitsiLink: `https://meet.jit.si/test-${Date.now()}`,
+                organizerId: 16,
+                organizerRole: 'admin',
+                participantIds: participants
+            };
+            
+            addResult(`Creating meeting "${title}" with participants: ${participants.join(', ')}...`, 'info');
+            
+            try {
+                const response = await fetch('http://localhost:8081/api/admin/meetings/with-notifications', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(meetingData)
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    addResult(`✅ Meeting created successfully! ID: ${result.meeting.id}`, 'success');
+                    addResult(`<pre>${JSON.stringify(result, null, 2)}</pre>`, 'info');
+                } else {
+                    addResult(`❌ Failed to create meeting: ${response.status}`, 'error');
+                }
+            } catch (error) {
+                addResult(`❌ Error creating meeting: ${error.message}`, 'error');
+            }
+        }
+        
+        // Auto-test on page load
+        window.onload = function() {
+            addResult('Calendar Integration Test Page Loaded', 'info');
+            addResult('Click the buttons above to test different aspects of the calendar integration.', 'info');
+        };
+    </script>
+</body>
+</html>

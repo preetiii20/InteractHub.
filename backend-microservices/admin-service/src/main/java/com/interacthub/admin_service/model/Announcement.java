@@ -44,6 +44,9 @@ public class Announcement {
     @Column(name = "created_at")
     private LocalDateTime createdAt;
     
+    @Column(name = "organization_id")
+    private Long organizationId;
+    
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
@@ -120,5 +123,13 @@ public class Announcement {
     
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+    
+    public Long getOrganizationId() {
+        return organizationId;
+    }
+    
+    public void setOrganizationId(Long organizationId) {
+        this.organizationId = organizationId;
     }
 }

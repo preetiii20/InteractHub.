@@ -1,166 +1,339 @@
-/**
- * Notification Service
- * Handles all notification types: messages, announcements, polls, calls
- */
-
+// Enhanced Notification Service
 class NotificationService {
   constructor() {
-    this.audioContext = null;
-    this.notificationPermission = 'default';
-    this.initAudio();
-    this.requestPermission();
+    this.listeners = new Map(); // userId -> Set of callback functions
+    this.debugMode = true;
   }
 
-  // Initialize Web Audio API for sound notifications
-  initAudio() {
+  log(message, ...args) {
+    if (this.debugMode) {
+      console.log(`[NotificationService] ${message}`, ...args);
+    }
+  }
+
+  // Subscribe to notifications for a specific user
+  subscribe(userId, callback) {
+    const numericUserId = Number(userId);
+    if (!this.listeners.has(numericUserId)) {
+      this.listeners.set(numericUserId, new Set());
+    }
+    this.listeners.get(numericUserId).add(callback);
+    this.log(`Subscribed callback for user ${numericUserId}`);
+    
+    // Return unsubscribe function
+    return () => {
+      const userListeners = this.listeners.get(numericUserId);
+      if (userListeners) {
+        userListeners.delete(callback);
+        if (userListeners.size === 0) {
+          this.listeners.delete(numericUserId);
+        }
+      }
+      this.log(`Unsubscribed callback for user ${numericUserId}`);
+    };
+  }
+
+  // Send notification to a user
+  sendNotification(userId, notification) {
+    const numericUserId = Number(userId);
+    this.log(`Sending notification to user ${numericUserId}:`, notification);
+
     try {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      this.audioContext = new AudioContext();
-    } catch (e) {
-      console.warn('Web Audio API not supported');
+      // Store in localStorage
+      const notifKey = `notifications_${numericUserId}`;
+      const existingNotifs = localStorage.getItem(notifKey);
+      const notifs = existingNotifs ? JSON.parse(existingNotifs) : [];
+      
+      // Add unique ID if not present
+      if (!notification.id) {
+        notification.id = Date.now() + Math.random();
+      }
+      
+      // Add timestamp if not present
+      if (!notification.timestamp) {
+        notification.timestamp = new Date().toISOString();
+      }
+      
+      notifs.unshift(notification);
+      localStorage.setItem(notifKey, JSON.stringify(notifs));
+      this.log(`Stored notification in localStorage for user ${numericUserId}`);
+
+      // Notify all subscribers for this user
+      const userListeners = this.listeners.get(numericUserId);
+      if (userListeners && userListeners.size > 0) {
+        this.log(`Notifying ${userListeners.size} subscribers for user ${numericUserId}`);
+        userListeners.forEach(callback => {
+          try {
+            callback(notification, notifs);
+          } catch (error) {
+            console.error('Error in notification callback:', error);
+          }
+        });
+      } else {
+        this.log(`No active subscribers for user ${numericUserId}`);
+      }
+
+      // Dispatch custom event as fallback
+      window.dispatchEvent(new CustomEvent('notificationsUpdated', {
+        detail: { 
+          userId: numericUserId, 
+          notification,
+          allNotifications: notifs
+        }
+      }));
+      this.log(`Dispatched notificationsUpdated event for user ${numericUserId}`);
+
+      // Dispatch storage event for cross-tab communication
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: notifKey,
+        newValue: JSON.stringify(notifs),
+        oldValue: existingNotifs,
+        storageArea: localStorage
+      }));
+      this.log(`Dispatched storage event for user ${numericUserId}`);
+
+      return true;
+    } catch (error) {
+      console.error('Error sending notification:', error);
+      return false;
     }
   }
 
-  // Request browser notification permission
-  requestPermission() {
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission().then(permission => {
-        this.notificationPermission = permission;
-      });
-    } else if ('Notification' in window) {
-      this.notificationPermission = Notification.permission;
-    }
-  }
-
-  // Play notification sound (pop sound)
-  playNotificationSound(type = 'message') {
-    if (!this.audioContext) return;
-
-    try {
-      const now = this.audioContext.currentTime;
-      const oscillator = this.audioContext.createOscillator();
-      const gainNode = this.audioContext.createGain();
-
-      oscillator.connect(gainNode);
-      gainNode.connect(this.audioContext.destination);
-
-      // Different sounds for different notification types
-      const sounds = {
-        message: { frequency: 800, duration: 0.1 },
-        announcement: { frequency: 600, duration: 0.15 },
-        poll: { frequency: 700, duration: 0.12 },
-        call: { frequency: 900, duration: 0.2 },
-      };
-
-      const sound = sounds[type] || sounds.message;
-
-      oscillator.frequency.value = sound.frequency;
-      gainNode.gain.setValueAtTime(0.3, now);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, now + sound.duration);
-
-      oscillator.start(now);
-      oscillator.stop(now + sound.duration);
-    } catch (e) {
-      console.warn('Could not play notification sound:', e);
-    }
-  }
-
-  // Show browser native notification
-  showBrowserNotification(title, options = {}) {
-    if (this.notificationPermission !== 'granted' || !('Notification' in window)) {
-      return;
-    }
-
-    const defaultOptions = {
-      icon: '/logo192.png',
-      badge: '/logo192.png',
-      tag: options.tag || 'notification',
-      requireInteraction: options.requireInteraction || false,
-      ...options,
+  // Send meeting invitation notification
+  sendMeetingInvitation(participantId, meetingData) {
+    const notification = {
+      type: 'MEETING_INVITATION',
+      title: `Meeting Invitation: ${meetingData.title}`,
+      message: `You've been invited to "${meetingData.title}" on ${meetingData.date} at ${meetingData.time}. Check your calendar for details.`,
+      read: false,
+      data: {
+        meetingId: meetingData.id,
+        meetingTitle: meetingData.title,
+        meetingDate: meetingData.date,
+        meetingTime: meetingData.time,
+        jitsiLink: meetingData.jitsiLink
+      }
     };
 
-    const notification = new Notification(title, defaultOptions);
+    return this.sendNotification(participantId, notification);
+  }
 
-    if (options.onClick) {
-      notification.onclick = options.onClick;
+  // Get notifications for a user
+  getNotifications(userId) {
+    const numericUserId = Number(userId);
+    const notifKey = `notifications_${numericUserId}`;
+    
+    try {
+      const stored = localStorage.getItem(notifKey);
+      if (stored) {
+        const notifications = JSON.parse(stored);
+        this.log(`Retrieved ${notifications.length} notifications for user ${numericUserId}`);
+        return notifications;
+      }
+    } catch (error) {
+      console.error('Error getting notifications:', error);
     }
-
-    return notification;
-  }
-
-  // Show message notification
-  showMessageNotification(from, content, onClickCallback) {
-    this.playNotificationSound('message');
     
-    this.showBrowserNotification(`New message from ${from}`, {
-      body: content.substring(0, 100),
-      tag: `message-${from}`,
-      onClick: onClickCallback,
-    });
+    return [];
   }
 
-  // Show announcement notification
-  showAnnouncementNotification(title, content, onClickCallback) {
-    this.playNotificationSound('announcement');
+  // Mark notification as read
+  markAsRead(userId, notificationId) {
+    const numericUserId = Number(userId);
+    const notifKey = `notifications_${numericUserId}`;
     
-    this.showBrowserNotification(`📢 ${title}`, {
-      body: content.substring(0, 100),
-      tag: 'announcement',
-      requireInteraction: true,
-      onClick: onClickCallback,
-    });
-  }
-
-  // Show poll notification
-  showPollNotification(question, onClickCallback) {
-    this.playNotificationSound('poll');
+    try {
+      const stored = localStorage.getItem(notifKey);
+      if (stored) {
+        const notifications = JSON.parse(stored);
+        const notification = notifications.find(n => n.id === notificationId);
+        if (notification) {
+          notification.read = true;
+          localStorage.setItem(notifKey, JSON.stringify(notifications));
+          
+          // Notify subscribers
+          const userListeners = this.listeners.get(numericUserId);
+          if (userListeners) {
+            userListeners.forEach(callback => {
+              try {
+                callback(notification, notifications);
+              } catch (error) {
+                console.error('Error in notification callback:', error);
+              }
+            });
+          }
+          
+          this.log(`Marked notification ${notificationId} as read for user ${numericUserId}`);
+          return true;
+        }
+      }
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+    }
     
-    this.showBrowserNotification('📊 New Poll', {
-      body: question.substring(0, 100),
-      tag: 'poll',
-      requireInteraction: true,
-      onClick: onClickCallback,
-    });
+    return false;
   }
 
-  // Show incoming call notification
-  showCallNotification(from, callType = 'VIDEO', onClickCallback) {
-    this.playNotificationSound('call');
+  // Clear all notifications for a user
+  clearNotifications(userId) {
+    const numericUserId = Number(userId);
+    const notifKey = `notifications_${numericUserId}`;
+    localStorage.removeItem(notifKey);
     
-    this.showBrowserNotification(`📞 Incoming ${callType} Call`, {
-      body: `From: ${from}`,
-      tag: `call-${from}`,
-      requireInteraction: true,
-      onClick: onClickCallback,
-    });
-  }
-
-  // Show group notification
-  showGroupNotification(groupName, message, onClickCallback) {
-    this.playNotificationSound('message');
+    // Notify subscribers
+    const userListeners = this.listeners.get(numericUserId);
+    if (userListeners) {
+      userListeners.forEach(callback => {
+        try {
+          callback(null, []);
+        } catch (error) {
+          console.error('Error in notification callback:', error);
+        }
+      });
+    }
     
-    this.showBrowserNotification(`👥 ${groupName}`, {
-      body: message.substring(0, 100),
-      tag: `group-${groupName}`,
-      onClick: onClickCallback,
-    });
+    this.log(`Cleared all notifications for user ${numericUserId}`);
   }
 
-  // Update browser tab title with unread count
+  // Get unread count for a user
+  getUnreadCount(userId) {
+    const notifications = this.getNotifications(userId);
+    return notifications.filter(n => !n.read).length;
+  }
+
+  // Test function
+  test(userId = 2) {
+    this.log('Running notification service test...');
+    
+    const testNotification = {
+      type: 'MEETING_INVITATION',
+      title: 'Test Meeting Notification',
+      message: 'This is a test notification from NotificationService',
+      read: false,
+      data: {
+        meetingId: 999,
+        meetingTitle: 'Test Meeting',
+        meetingDate: '2025-12-22',
+        meetingTime: '10:00'
+      }
+    };
+    
+    const success = this.sendNotification(userId, testNotification);
+    this.log(`Test notification sent: ${success ? 'SUCCESS' : 'FAILED'}`);
+    
+    const notifications = this.getNotifications(userId);
+    this.log(`Retrieved ${notifications.length} notifications after test`);
+    
+    return success;
+  }
+
+  // Update browser tab title with unread count (for compatibility)
   updateTabTitle(unreadCount) {
-    if (unreadCount > 0) {
-      document.title = `(${unreadCount}) InteractHub`;
-    } else {
-      document.title = 'InteractHub';
+    try {
+      const baseTitle = document.title.split(' (')[0]; // Remove existing count
+      if (unreadCount > 0) {
+        document.title = `${baseTitle} (${unreadCount})`;
+      } else {
+        document.title = baseTitle;
+      }
+      this.log(`Updated tab title with unread count: ${unreadCount}`);
+    } catch (error) {
+      console.error('Error updating tab title:', error);
     }
   }
 
-  // Close all notifications
-  closeAllNotifications() {
-    if ('Notification' in window) {
-      Notification.close?.();
+  // Show browser notification for announcements (for compatibility)
+  showAnnouncementNotification(title, content, onClick = null) {
+    try {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        const notification = new Notification(title, {
+          body: content,
+          icon: '/favicon.ico',
+          tag: 'announcement'
+        });
+        
+        if (onClick) {
+          notification.onclick = onClick;
+        }
+        
+        this.log(`Showed browser notification: ${title}`);
+      } else {
+        this.log('Browser notifications not available or not permitted');
+      }
+    } catch (error) {
+      console.error('Error showing announcement notification:', error);
+    }
+  }
+
+  // Show browser notification for polls (for compatibility)
+  showPollNotification(question, onClick = null) {
+    try {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        const notification = new Notification('New Poll', {
+          body: question,
+          icon: '/favicon.ico',
+          tag: 'poll'
+        });
+        
+        if (onClick) {
+          notification.onclick = onClick;
+        }
+        
+        this.log(`Showed poll notification: ${question}`);
+      } else {
+        this.log('Browser notifications not available or not permitted');
+      }
+    } catch (error) {
+      console.error('Error showing poll notification:', error);
     }
   }
 }
 
-export default new NotificationService();
+// Create singleton instance
+const notificationService = new NotificationService();
+
+// Make it available globally for debugging
+window.notificationService = notificationService;
+
+// Add simple test commands to window
+window.testMeetingNotifications = {
+  send: (userId = 2, title = 'Test Meeting') => {
+    console.log(`🧪 Sending test meeting notification to user ${userId}...`);
+    const success = notificationService.sendMeetingInvitation(userId, {
+      id: Date.now(),
+      title: title,
+      date: '2025-12-22',
+      time: '14:00',
+      jitsiLink: 'https://meet.jit.si/test'
+    });
+    
+    if (success) {
+      console.log(`✅ Test notification sent to user ${userId}`);
+      console.log('👀 Check the bell icon for the notification!');
+    } else {
+      console.log(`❌ Failed to send notification to user ${userId}`);
+    }
+    return success;
+  },
+  
+  check: (userId = 2) => {
+    const notifications = notificationService.getNotifications(userId);
+    console.log(`📬 User ${userId} has ${notifications.length} notifications:`);
+    notifications.forEach((notif, index) => {
+      console.log(`  ${index + 1}. ${notif.title} (${notif.type}) - ${notif.read ? 'Read' : 'Unread'}`);
+    });
+    return notifications;
+  },
+  
+  clear: (userId = 2) => {
+    notificationService.clearNotifications(userId);
+    console.log(`🗑️ Cleared notifications for user ${userId}`);
+  }
+};
+
+console.log('🧪 Meeting notification testing available:');
+console.log('  testMeetingNotifications.send(2) - Send test to user 2');
+console.log('  testMeetingNotifications.check(2) - Check user 2 notifications');
+console.log('  testMeetingNotifications.clear(2) - Clear user 2 notifications');
+
+export default notificationService;
